@@ -2,10 +2,11 @@ LukzTools - Ferramenta de Automação de Combos
 Uma ferramenta de automação com interface gráfica (GUI) construída em Python usando Tkinter. O LukzTools permite que usuários configurem e executem sequências de teclas (combos) em jogos ou outras aplicações, com suporte a perfis, delays customizáveis e um overlay para fácil acesso.
 
 📷 Screenshots
-(Sugestão: Tire prints da sua aplicação e coloque aqui! Isso ajuda muito a mostrar como ela é. Por exemplo:)
+## 📷 Screenshots
 
-Janela Principal	Configuração do Combo	Mini Overlay
-assets/janela_principal.png	assets/config_combo.png	assets/mini_overlay.png
+| Janela Principal | Configuração do Combo | Mini Overlay |
+| :---: |:---:|:---:|
+| ![Janela Principal do LukzTools](assets/janela_principal.png) | ![Janela de Configuração do Combo](assets/config_combo.png) | ![Mini Overlay da Aplicação](assets/mini_overlay.png) |
 
 Exportar para as Planilhas
 ✨ Principais Funcionalidades
