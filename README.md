@@ -62,51 +62,51 @@ Abra o programa.
 python main.py
 ```
 
-Clique no botão "⚙ Configuração".
+## Clique no botão "⚙ Configuração".
+![Janela de Configuração](assets/config.png)
 
 Clique em "▶ Ativar captura".
 
-Volte para o seu jogo. Coloque o cursor do mouse sobre a imagem do seu pokémon (para o revive) e pressione a tecla h.
+Volte para o seu jogo. Coloque o cursor do mouse sobre a imagem do seu pokémon (para o revive) e pressione a tecla **`H`**
 
-Coloque o cursor no centro da tela (ou perto do seu personagem) e pressione a tecla j.
+Coloque o cursor no centro da tela (ou perto do seu personagem) e pressione a tecla **`J`**
 
 Clique em "■ Desativar captura" na janela de configuração.
 
-Configurando seu Combo:
 
-Na janela principal, clique no botão "Combo".
+## 👤 Salvando seu Perfil
 
-Preencha os campos com as teclas que você usa no jogo (f1, f2, page down, etc.) e os delays desejados entre cada ação (ex: 0.5 para meio segundo).
+1. Na janela principal, clique em **"👤 Criar Perfil"**.  
+2. Dê um nome ao seu perfil (ex: `Meu Paladino`) e clique em **"Criar"**.  
+3. Suas configurações de combo atuais serão salvas nele.
 
-Defina a tecla que irá iniciar todo o combo no campo "Iniciar Combo".
+---
 
-Clique em "Salvar".
+## 🎛️ Configurando seu Combo
 
-Salvando seu Perfil:
+1. Na janela principal, clique no botão **"Combo"**.  
+2. Preencha os campos com as teclas que você usa no jogo (ex: `F1`, `F2`, `Page Down`) e os **delays** desejados entre cada ação (ex: `0.5` para meio segundo).  
+3. Defina a tecla que irá iniciar todo o combo no campo **`"Iniciar Combo"`**.  
+4. Clique em **"Salvar"**.
 
-Na janela principal, clique em "👤 Criar Perfil".
+---
 
-Dê um nome ao seu perfil (ex: "Meu Paladino") e clique em "Criar". Suas configurações de combo atuais serão salvas nele.
+## 🔛 Ativando a Ferramenta
 
-Ativando a Ferramenta:
+1. Clique no botão **"Desligado"** para que ele fique **verde** e mude para **"Ativado"**.
 
-Clique no botão "Desligado" para que ele fique verde e mude para "Ativado".
+---
 
-Executando no Jogo:
+## 🎮 Executando no Jogo
 
-Com a ferramenta "Ativada", vá para o jogo e pressione a tecla que você definiu como "Iniciar Combo". A sequência de ataques e ações será executada.
+1. Com a ferramenta **Ativada**, vá para o jogo.  
+2. Pressione a tecla que você definiu como **`"Iniciar Combo"`**.  
+3. A sequência de ataques e ações será executada automaticamente.
 
-📂 Estrutura dos Arquivos
-/LuukzTools
-|
-├── main.py             # Lógica da interface gráfica, perfis e controle geral
-├── combo.py            # Funções principais de automação (simulação de teclas e mouse)
-├── perfis.json         # Arquivo gerado para salvar os perfis dos usuários
-├── requirements.txt    # Lista de dependências Python do projeto
-|
-└── /assets/            # Pasta sugerida para as imagens
-    ├── logo.jpg
-    ├── imgfundo.jpg
-    └── ...
-⚠️ Aviso Importante
-O uso de ferramentas de automação pode ser contra os Termos de Serviço de muitos jogos online e pode resultar em punições para sua conta. Use esta ferramenta por sua conta e risco. O desenvolvedor não se responsabiliza por qualquer consequência negativa do seu uso.
+---
+
+⚠️ **Aviso Importante**  
+O uso de ferramentas de automação pode ser contra os **Termos de Serviço** de muitos jogos online e pode resultar em **punições para sua conta**.  
+Use esta ferramenta **por sua conta e risco**.  
+O desenvolvedor **não se responsabiliza** por qualquer consequência negativa do seu uso.
+
