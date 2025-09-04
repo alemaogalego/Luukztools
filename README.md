@@ -1,18 +1,18 @@
-LukzTools - Ferramenta de Automação de Combos
+# 🎮 LukzTools - Automação de Combos
 Uma ferramenta de automação com interface gráfica (GUI) construída em Python usando Tkinter. O LukzTools permite que usuários configurem e executem sequências de teclas (combos) em jogos ou outras aplicações, com suporte a perfis, delays customizáveis e um overlay para fácil acesso.
 
-📷 Screenshots
+
 ## 📷 Screenshots
 
 | Janela Principal | Configuração do Combo | Mini Overlay |
 | :---: |:---:|:---:|
 | ![Janela Principal do LukzTools](assets/janela_principal.png) | ![Janela de Configuração do Combo](assets/config_combo.png) | ![Mini Overlay da Aplicação](assets/mini_overlay.png) |
 
-Exportar para as Planilhas
-✨ Principais Funcionalidades
+## 🚀 Funcionalidades
+
 Interface Gráfica Intuitiva: Fácil de configurar através de uma interface visual, sem necessidade de editar código.
 
-Combos 100% Configuráveis: Defina até 12 teclas de ataque, teclas de suporte (stop/medicine) e uma tecla de "revive", cada uma com seu próprio delay em segundos.
+Combos 100% Configuráveis: Defina até 12 teclas de ataque, cada uma com seu próprio delay em segundos.
 
 Gerenciamento de Perfis: Crie, salve, selecione e exclua perfis diferentes. Ideal para configurar o bot para diferentes personagens ou situações de jogo.
 
@@ -22,39 +22,45 @@ Atalho de Ativação: Defina uma tecla de atalho global para iniciar o combo, qu
 
 Mini Overlay: Minimize a aplicação para um pequeno overlay que fica sempre visível, permitindo reabrir a janela principal com um clique, sem poluir a tela.
 
-⚙️ Como Funciona
+## 🛠️ Tecnologias utilizadas
+- [Python](https://www.python.org/)  
+- [Tkinter](https://docs.python.org/3/library/tkinter.html) - Interface gráfica  
+- [Keyboard](https://pypi.org/project/keyboard/) - Leitura e simulação de teclas  
+- [PyAutoGUI](https://pypi.org/project/pyautogui/) - Automação de cliques  
+- [Pillow](https://pypi.org/project/Pillow/) - Manipulação de imagens na interface  
+- JSON - Armazenamento de perfis
+
+## ⚙️ Como Funciona
 A aplicação utiliza as bibliotecas keyboard para simular o pressionamento de teclas e pyautogui para controlar o mouse. A interface, construída com tkinter, permite que o usuário defina todas as teclas e delays, que são salvos em um arquivo perfis.json. Ao ativar a ferramenta, ela escuta pela "tecla de início de combo" e, quando pressionada, executa a sequência de ações pré-configurada.
 
-🚀 Instalação e Execução
+## 🚀 Instalação e Execução
 Para rodar este projeto, você precisará ter o Python 3 instalado.
 
-Clone o repositório:
+🔧 Instalação Clone o repositório:
 
-Bash
 
-git clone https://github.com/seu-usuario/LuukzTools.git
-cd LuukzTools
-Crie um arquivo requirements.txt com o seguinte conteúdo:
+1. Clone este repositório ou faça o download dos arquivos:
 
-Plaintext
+```bash
+git clone https://github.com/SEU-USUARIO/LukzTools.git
+cd LukzTools
 
+Instale as dependências:
 keyboard
 pyautogui
 Pillow
-Instale as dependências:
 
-Bash
-
-pip install -r requirements.txt
-Execute a aplicação:
-
-Bash
-
+▶️ Como Executar
+Depois de concluir a instalação, você pode iniciar o programa com o seguinte comando:
 python main.py
+```
 📋 Como Usar
 Primeira Execução (Configuração de Posição):
 
 Abra o programa.
+```bash
+python main.py
+```
 
 Clique no botão "⚙ Configuração".
 
