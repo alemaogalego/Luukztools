@@ -1,6 +1,23 @@
 import keyboard
 import time
 import pyautogui as py
+import ctypes
+
+
+def _win_move_click(x, y, button='left'):
+    """Move + click atômico via Win32 API — sem chance do mouse escapar."""
+    ctypes.windll.user32.SetCursorPos(int(x), int(y))
+    if button == 'right':
+        ctypes.windll.user32.mouse_event(0x0008, 0, 0, 0, 0)  # RIGHTDOWN
+        ctypes.windll.user32.mouse_event(0x0010, 0, 0, 0, 0)  # RIGHTUP
+    else:
+        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+
+
+def _win_move(x, y):
+    """Move mouse sem clicar — Win32 API."""
+    ctypes.windll.user32.SetCursorPos(int(x), int(y))
 
 
 def combopoke(
@@ -84,15 +101,14 @@ def set_center(x, y):
 
 
 def revive(revive_key):
-    if revive_key:  # Verifica se revive_key não está vazio
-        py.moveTo(pos_poke)
-        py.click(button='right')
+    if revive_key:
+        # Tudo via Win32 API — atômico, não importa se mexer o mouse
+        _win_move_click(pos_poke[0], pos_poke[1], 'right')
         keyboard.press_and_release(revive_key)
-        py.moveTo(pos_poke)
-        py.click(button='right')
+        _win_move_click(pos_poke[0], pos_poke[1], 'right')
         time.sleep(0.8)
         keyboard.press_and_release("e")
-        py.moveTo(pos_center)
+        _win_move(pos_center[0], pos_center[1])
     return True
 
 

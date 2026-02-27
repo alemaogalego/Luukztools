@@ -140,6 +140,15 @@ def aplicar_perfil(nome):
     combo_start_key = perfil.get("combo_start_key", "")
     nightmare_attacks = perfil.get("nightmare_attacks", [])
     combo_mode_active = perfil.get("combo_mode_active", "HUNT NORMAL")
+    # Restaura posições do revive/center salvos no perfil
+    saved_poke = perfil.get("pos_poke", None)
+    if saved_poke:
+        combo.set_pos_poke(saved_poke[0], saved_poke[1])
+        print(f"pos_poke restaurado: ({saved_poke[0]}, {saved_poke[1]})")
+    saved_center = perfil.get("pos_center", None)
+    if saved_center:
+        combo.set_center(saved_center[0], saved_center[1])
+        print(f"pos_center restaurado: ({saved_center[0]}, {saved_center[1]})")
     perfil_ativo = nome
     try:
         if update_overlay_label is not None:
@@ -180,7 +189,9 @@ def salvar_perfil_atual(nome):
         "pokeattack_delay12": pokeattack_delay12,
         "combo_start_key": combo_start_key,
         "nightmare_attacks": nightmare_attacks,
-        "combo_mode_active": combo_mode_active
+        "combo_mode_active": combo_mode_active,
+        "pos_poke": list(combo.pos_poke),
+        "pos_center": list(combo.pos_center)
     }
     salvar_perfis()
 
@@ -252,11 +263,17 @@ def _loop_captura():
             x, y = py.position()
             combo.set_pos_poke(x, y)
             print(f"pos_poke atualizado: ({x}, {y})")
+            # Salva no perfil automaticamente
+            salvar_perfil_atual(perfil_ativo)
+            print(f"pos_poke salvo no perfil '{perfil_ativo}'")
 
         elif key.name == 'j':  # salvar center
             x, y = py.position()
             combo.set_center(x, y)
             print(f"center atualizado: ({x}, {y})")
+            # Salva no perfil automaticamente
+            salvar_perfil_atual(perfil_ativo)
+            print(f"pos_center salvo no perfil '{perfil_ativo}'")
 
 def main():
     global button_combo, button_activation, perfil_label, lbl
@@ -543,6 +560,10 @@ def main():
                 btn_captura_toggle.config(text="▶ Iniciar Scan (G)", bg="#4caf50")
             except Exception:
                 pass
+            try:
+                if update_overlay_scan: update_overlay_scan()
+            except Exception:
+                pass
             print("Scan de captura desligado.")
         else:
             # Verifica se tem gaveta ativa
@@ -555,12 +576,16 @@ def main():
                 btn_captura_toggle.config(text="■ Parar Scan (G)", bg="#f44336")
             except Exception:
                 pass
+            try:
+                if update_overlay_scan: update_overlay_scan()
+            except Exception:
+                pass
             captura_thread_scan = threading.Thread(target=scan_captura_loop, daemon=True)
             captura_thread_scan.start()
             print(f"Scan de captura ligado! Gavetas ativas: {ativas}")
 
-    # Hotkey G para parar/iniciar scan
-    keyboard.add_hotkey('g', toggle_captura_global, suppress=True)
+    # Hotkey G — suppress=False para poder digitar "g" normalmente no jogo
+    keyboard.add_hotkey('g', toggle_captura_global, suppress=False)
 
     def abrir_captura():
         nonlocal janela_captura
@@ -1392,23 +1417,23 @@ def main():
     mini.withdraw()
     mini.overrideredirect(True)
     mini.attributes("-topmost", True)
-    mini.geometry("200x50+1200+680")
+    mini.geometry("200x90+1200+680")
     mini.attributes("-alpha", 0.93)
 
     # Canvas principal — estilo moderno escuro
-    bg = tk.Canvas(mini, width=200, height=50, highlightthickness=0)
+    bg = tk.Canvas(mini, width=200, height=90, highlightthickness=0)
     bg.place(x=0, y=0, relwidth=1, relheight=1)
 
     # Fundo gradiente fake (3 faixas)
-    bg.create_rectangle(0, 0, 200, 17, fill="#0f0f0f", outline="")
-    bg.create_rectangle(0, 17, 200, 33, fill="#1a1a2e", outline="")
-    bg.create_rectangle(0, 33, 200, 50, fill="#16213e", outline="")
+    bg.create_rectangle(0, 0, 200, 30, fill="#0f0f0f", outline="")
+    bg.create_rectangle(0, 30, 200, 60, fill="#1a1a2e", outline="")
+    bg.create_rectangle(0, 60, 200, 90, fill="#16213e", outline="")
 
     # Linha accent neon no topo
     bg.create_rectangle(0, 0, 200, 2, fill="#00d4ff", outline="")
 
     # Linha accent neon embaixo
-    bg.create_rectangle(0, 48, 200, 50, fill="#7c3aed", outline="")
+    bg.create_rectangle(0, 88, 200, 90, fill="#7c3aed", outline="")
 
     # Nome do perfil
     lbl = bg.create_text(12, 13, text=f"⚡ {perfil_ativo}",
@@ -1425,9 +1450,23 @@ def main():
     # Centro da pokeball
     scan_ball_center = bg.create_oval(164, 9, 170, 15, fill="white", outline="#333333", width=1)
 
+    # ---- Indicador Captu (pokeball + texto em formato pílula) ----
+    # Pílula: retângulo central + semicírculos nas pontas
+    captu_pill_left = bg.create_oval(58, 25, 82, 55, fill="", outline="#ff3b3b", width=2)
+    captu_pill_rect = bg.create_rectangle(70, 25, 130, 55, fill="#0f0f0f", outline="", width=0)
+    captu_pill_right = bg.create_oval(118, 25, 142, 55, fill="", outline="#ff3b3b", width=2)
+    captu_pill_top = bg.create_line(70, 25, 130, 25, fill="#ff3b3b", width=2)
+    captu_pill_bot = bg.create_line(70, 55, 130, 55, fill="#ff3b3b", width=2)
+    # Texto "Captu" dentro da pílula (lado esquerdo)
+    captu_text = bg.create_text(86, 40, text="Captu", fill="#ff3b3b", font=("Consolas", 8, "bold"), anchor="center")
+    # Pokeball dentro da pílula (lado direito, centralizada no semicírculo)
+    captu_ball = bg.create_oval(123, 33, 137, 47, fill="#ff3b3b", outline="#444444", width=1)
+    captu_ball_line = bg.create_line(123, 40, 137, 40, fill="#444444", width=1)
+    captu_center = bg.create_oval(127, 37, 133, 43, fill="white", outline="#444444", width=1)
+
     # Botão de restaurar (seta elegante)
-    bg.create_rectangle(60, 28, 140, 46, fill="#7c3aed", outline="#9d5cff", width=1)
-    bg.create_text(100, 37, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
+    bg.create_rectangle(60, 62, 140, 78, fill="#7c3aed", outline="#9d5cff", width=1)
+    bg.create_text(100, 70, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
 
     # Registra as funções no escopo global
     global update_overlay_status, update_overlay_label, update_overlay_scan
@@ -1441,10 +1480,19 @@ def main():
             pass
 
     def update_overlay_scan():
-        """Atualiza a pokeball do scan no overlay."""
+        """Atualiza a pokeball do scan no overlay e o indicador Captu."""
         try:
-            color = "#00ff88" if captura_scan_habilitado else "#ff3b3b"
-            bg.itemconfig(scan_ball_outer, fill=color)
+            # Pokeball pequena: segue captura_scan_habilitado (master switch)
+            hab_color = "#00ff88" if captura_scan_habilitado else "#ff3b3b"
+            bg.itemconfig(scan_ball_outer, fill=hab_color)
+            # Pílula Captu: segue captura_modo_ativo (G ligado/desligado)
+            captu_color = "#00ff88" if captura_modo_ativo else "#ff3b3b"
+            bg.itemconfig(captu_pill_left, outline=captu_color)
+            bg.itemconfig(captu_pill_right, outline=captu_color)
+            bg.itemconfig(captu_pill_top, fill=captu_color)
+            bg.itemconfig(captu_pill_bot, fill=captu_color)
+            bg.itemconfig(captu_ball, fill=captu_color)
+            bg.itemconfig(captu_text, fill=captu_color)
         except Exception:
             pass
 
@@ -1457,7 +1505,7 @@ def main():
 
     def on_restore(event=None):
         cx, cy = event.x, event.y
-        if 60 <= cx <= 140 and 28 <= cy <= 46:
+        if 60 <= cx <= 140 and 62 <= cy <= 78:
             restaurar()
 
     bg.bind("<Button-1>", on_restore)
