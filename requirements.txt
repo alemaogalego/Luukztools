@@ -1,3 +1,6 @@
 keyboard
 pyautogui
 Pillow
+opencv-python
+numpy
+mss

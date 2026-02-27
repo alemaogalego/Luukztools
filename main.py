@@ -507,7 +507,7 @@ def main():
                             py.click(cx, cy, _pause=False)
                             print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
                             encontrou = True
-                            time.sleep(0.4)
+                            time.sleep(0.1)
                             break
                     except Exception:
                         continue
