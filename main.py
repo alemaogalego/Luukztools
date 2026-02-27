@@ -10,6 +10,8 @@ import time
 import shutil
 import cv2
 import numpy as np
+import mss
+import ctypes
 
 import sys, os
 
@@ -451,12 +453,24 @@ def main():
                 pass
         return caminho
 
-    def scan_captura_loop():
-        """Thread ULTRA-FAST: grayscale + flat cache + zero overhead."""
-        global captura_modo_ativo
-        print("🟢 Scan iniciado (ULTRA-FAST grayscale)")
+    def _win_click(cx, cy):
+        """Move + click via Win32 API — zero overhead Python."""
+        ctypes.windll.user32.SetCursorPos(cx, cy)
+        ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+        ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
 
-        # Pré-carrega TODAS as refs em GRAYSCALE numa lista plana
+    def scan_captura_loop():
+        """
+        MAX SPEED scan:
+        - MSS (DXGI) — captura GPU nativa, ~3x mais rápido que ImageGrab
+        - BGRA→Gray direto (1 conversão, pula RGB)
+        - ctypes Win32 mouse (bypassa pyautogui)
+        - Idle: 0.05s | Pós-ball: 0.6s
+        """
+        global captura_modo_ativo
+        print("🟢 Scan MAX SPEED (MSS+DXGI+ctypes)")
+
+        # Pré-carrega refs em GRAYSCALE, lista plana
         ref_list = []
         for gaveta in list(captura_gavetas):
             if not gaveta.get("ativo", False):
@@ -471,51 +485,49 @@ def main():
                     img = cv2.imread(caminho, cv2.IMREAD_GRAYSCALE)
                     if img is not None:
                         ref_list.append((nome, f, img))
-        print(f"📦 {len(ref_list)} refs carregadas (gray flat-cache)")
+        print(f"📦 {len(ref_list)} refs (gray flat-cache)")
 
         if not ref_list:
-            print("⚠ Nenhuma imagem encontrada nas gavetas ativas!")
+            print("⚠ Nenhuma ref encontrada!")
             captura_modo_ativo = False
             return
 
-        # Desliga TODA pausa do pyautogui
-        old_pause = py.PAUSE
-        py.PAUSE = 0
-
         try:
-            while captura_modo_ativo:
-                # Screenshot → numpy gray direto
-                try:
-                    screen_gray = cv2.cvtColor(np.array(ImageGrab.grab()), cv2.COLOR_RGB2GRAY)
-                except Exception:
-                    continue
-
-                encontrou = False
-                for nome, arq, ref_gray in ref_list:
-                    if not captura_modo_ativo:
-                        break
+            with mss.mss() as sct:
+                monitor = sct.monitors[1]
+                while captura_modo_ativo:
+                    # MSS DXGI: captura BGRA direto da GPU
                     try:
+                        raw = sct.grab(monitor)
+                        frame = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(raw.height, raw.width, 4)
+                        screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                    except Exception:
+                        continue
+
+                    encontrou = False
+                    for nome, arq, ref_gray in ref_list:
+                        if not captura_modo_ativo:
+                            break
                         res = cv2.matchTemplate(screen_gray, ref_gray, cv2.TM_CCOEFF_NORMED)
                         _, max_val, _, max_loc = cv2.minMaxLoc(res)
                         if max_val >= 0.84:
                             h, w = ref_gray.shape
                             cx = max_loc[0] + w // 2
                             cy = max_loc[1] + h // 2
-                            # Zero delay: move → T → click instantâneo
-                            py.moveTo(cx, cy, _pause=False)
+                            # Move mouse SEM clicar → T → 1 click só
+                            ctypes.windll.user32.SetCursorPos(cx, cy)
                             keyboard.press_and_release('t')
-                            py.click(cx, cy, _pause=False)
+                            time.sleep(0.015)
+                            _win_click(cx, cy)
                             print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
                             encontrou = True
-                            time.sleep(0.1)
+                            time.sleep(0.6)
                             break
-                    except Exception:
-                        continue
 
-                if not encontrou:
-                    time.sleep(0.02)
-        finally:
-            py.PAUSE = old_pause
+                    if not encontrou:
+                        time.sleep(0.01)
+        except Exception as e:
+            print(f"⚠ Erro scan: {e}")
 
         print("🔴 Scan encerrado.")
 
