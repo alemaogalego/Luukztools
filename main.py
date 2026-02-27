@@ -278,9 +278,9 @@ def main():
 
     root = tk.Tk()
     root.title("LuukzTools")
-    root.geometry("440x420")
+    root.geometry("440x680")
     root.resizable(False, False)
-    root.configure(bg="#cc0000")
+    root.configure(bg="#dc2626")
 
     # Carrega o ícone
     icon_img = Image.open(resource_path("logo.jpg"))
@@ -289,65 +289,83 @@ def main():
     root.iconphoto(True, icon_photo)
 
     # ═══════════════════════════════════════════
-    # 🔴 POKÉDEX SHELL — CARCAÇA VERMELHA
+    # 🔴 POKÉDEX TOP — INDICATORS BAR
     # ═══════════════════════════════════════════
 
-    # Topo da Pokédex — LEDs decorativos
-    top_bar = tk.Frame(root, bg="#cc0000", height=40)
-    top_bar.pack(fill="x", padx=10, pady=(8, 0))
+    top_bar = tk.Frame(root, bg="#dc2626", height=52)
+    top_bar.pack(fill="x", padx=8, pady=(8, 0))
     top_bar.pack_propagate(False)
 
-    # Grande LED azul (câmera da pokédex)
-    led_big = tk.Canvas(top_bar, width=30, height=30, bg="#cc0000", highlightthickness=0)
-    led_big.pack(side="left", padx=(5, 8))
-    led_big.create_oval(2, 2, 28, 28, fill="#00d4ff", outline="#005f7f", width=2)
-    led_big.create_oval(8, 6, 18, 14, fill="#80eeff", outline="")  # brilho
+    # Grande LED azul com anel branco
+    led_big = tk.Canvas(top_bar, width=48, height=48, bg="#dc2626", highlightthickness=0)
+    led_big.pack(side="left", padx=(6, 10))
+    # Anel branco externo
+    led_big.create_oval(2, 2, 46, 46, fill="white", outline="#e0e0e0", width=2)
+    # LED cyan interno com glow
+    led_big.create_oval(7, 7, 41, 41, fill="#22d3ee", outline="white", width=3)
+    # Brilho/reflexo
+    led_big.create_oval(14, 10, 28, 22, fill="#80eeff", outline="")
 
-    # Pequenos LEDs
-    for color in ["#ff1a1a", "#ffcb05", "#00c853"]:
-        led_sm = tk.Canvas(top_bar, width=12, height=12, bg="#cc0000", highlightthickness=0)
-        led_sm.pack(side="left", padx=3, pady=8)
-        led_sm.create_oval(1, 1, 11, 11, fill=color, outline="#333333", width=1)
+    # Pequenos LEDs (vermelho, amarelo, verde)
+    for color, border in [("#ef4444", "#991b1b"), ("#facc15", "#a16207"), ("#22c55e", "#166534")]:
+        led_sm = tk.Canvas(top_bar, width=12, height=12, bg="#dc2626", highlightthickness=0)
+        led_sm.pack(side="left", padx=2, pady=16)
+        led_sm.create_oval(1, 1, 11, 11, fill=color, outline=border, width=1)
 
-    # Config button no topo direito (lambda para forward-ref)
-    btn_cfg = tk.Button(top_bar, text="⚙", font=("Segoe UI Emoji", 14),
-                        bg="#aa0000", fg="#ffcb05", bd=0, padx=8, cursor="hand2",
-                        activebackground="#880000", command=lambda: abrir_configuracao())
-    btn_cfg.pack(side="right", padx=5)
+    # Título "LUUKZ TOOLS" no canto direito
+    tk.Label(top_bar, text="LUUKZ TOOLS", font=("Arial Black", 15, "italic"),
+             bg="#dc2626", fg="white").pack(side="right", padx=10)
 
-    # Título
-    tk.Label(top_bar, text="LuukzTools", font=("Arial", 13, "bold"),
-             bg="#cc0000", fg="#ffffff").pack(side="right", padx=5)
+    # Borda inferior vermelha escura (separador sutil)
+    tk.Frame(root, bg="#b91c1c", height=2).pack(fill="x", padx=8)
 
     # ═══════════════════════════════════════════
-    # 📺 TELA PRINCIPAL DA POKÉDEX (fundo escuro)
+    # 📺 INNER SCREEN CONTAINER
     # ═══════════════════════════════════════════
 
-    # Moldura da tela (cinza escuro simulando borda da tela)
-    screen_border = tk.Frame(root, bg="#444444", bd=3, relief="ridge")
-    screen_border.pack(fill="both", expand=True, padx=14, pady=(6, 4))
+    screen_border = tk.Frame(root, bg="#3f3f46", bd=0)
+    screen_border.pack(fill="both", expand=True, padx=16, pady=(8, 6))
 
-    screen = tk.Frame(screen_border, bg="#0a0a1a")
-    screen.pack(fill="both", expand=True, padx=3, pady=3)
+    screen = tk.Frame(screen_border, bg="#27272a")
+    screen.pack(fill="both", expand=True, padx=4, pady=4)
 
-    # Perfil ativo — barra superior da tela
-    perfil_bar = tk.Frame(screen, bg="#12122a")
-    perfil_bar.pack(fill="x", padx=8, pady=(8, 4))
+    # ── Profile Header ──
+    perfil_bar = tk.Frame(screen, bg="#18181b", bd=1, relief="solid",
+                          highlightbackground="#3f3f46", highlightthickness=1)
+    perfil_bar.pack(fill="x", padx=10, pady=(10, 6))
 
-    perfil_label = tk.Label(perfil_bar, text=f"▶ {perfil_ativo}", font=("Consolas", 11, "bold"),
-                            fg="#00d4ff", bg="#12122a")
-    perfil_label.pack(side="left", padx=5)
+    # Lado esquerdo: > PROFILE
+    perfil_left = tk.Frame(perfil_bar, bg="#18181b")
+    perfil_left.pack(side="left", padx=6, pady=4)
+    tk.Label(perfil_left, text="❯", font=("Consolas", 11, "bold"),
+             bg="#18181b", fg="#22d3ee").pack(side="left")
+    perfil_label = tk.Label(perfil_left, text=f" {perfil_ativo.upper()}",
+                            font=("Consolas", 11, "bold"),
+                            fg="#22d3ee", bg="#18181b")
+    perfil_label.pack(side="left")
 
-    # Log mini — canto superior direito da tela
+    # Lado direito: badge scan status
+    scan_badge = tk.Frame(perfil_bar, bg="#27272a", bd=1, relief="solid",
+                          highlightbackground="#3f3f46", highlightthickness=1)
+    scan_badge.pack(side="right", padx=6, pady=4)
+    tk.Label(scan_badge, text="⚠", font=("Segoe UI Emoji", 9),
+             bg="#27272a", fg="#eab308").pack(side="left", padx=(4, 2))
+    scan_status_lbl = tk.Label(scan_badge, text="SCAN DESABILITADO",
+                               font=("Consolas", 8, "bold"),
+                               bg="#27272a", fg="#34d399")
+    scan_status_lbl.pack(side="left", padx=(0, 2))
+    tk.Label(scan_badge, text="📋", font=("Segoe UI Emoji", 9),
+             bg="#27272a", fg="#22d3ee").pack(side="left", padx=(2, 4))
+
+    # Log mini (hidden - will use full log)
     log_history = []
 
-    log_frame = tk.Frame(perfil_bar, bg="#12122a")
-    log_frame.pack(side="right")
-
-    log_text = tk.Text(log_frame, height=1, width=22, state="disabled",
-                       bg="#0d0d1a", fg="#00ff88", font=("Consolas", 8),
-                       bd=1, relief="sunken", insertbackground="#00ff88")
-    log_text.pack(side="left", padx=(0, 4))
+    # Invisible mini log widget (needed for TextRedirector compatibility)
+    _log_mini_frame = tk.Frame(screen, bg="#27272a", height=1)
+    log_text = tk.Text(_log_mini_frame, height=1, width=1, state="disabled",
+                       bg="#27272a", fg="#27272a", font=("Consolas", 1),
+                       bd=0, relief="flat")
+    log_text.pack()
 
     def abrir_log_completo():
         log_win = tk.Toplevel(root)
@@ -404,18 +422,27 @@ def main():
 
         refresh_log()
 
-    btn_log = tk.Button(log_frame, text="📋", font=("Segoe UI Emoji", 10),
-                        bg="#12122a", fg="#00d4ff", bd=0, padx=4, pady=0,
-                        cursor="hand2", activebackground="#1a1a3a",
-                        command=abrir_log_completo)
-    btn_log.pack(side="left")
+    # Log button attached to scan_badge (clicking 📋 opens full log)
+    scan_badge.bind("<Button-1>", lambda e: abrir_log_completo())
+    for child in scan_badge.winfo_children():
+        child.bind("<Button-1>", lambda e: abrir_log_completo())
 
     def log_message(msg):
         log_history.append(msg)
+        # Feed hidden mini widget (compatibility)
         log_text.config(state="normal")
         log_text.delete("1.0", tk.END)
         log_text.insert(tk.END, msg + "\n")
         log_text.config(state="disabled")
+        # Feed visible log panel
+        try:
+            log_panel_text.config(state="normal")
+            color_tag = "err" if any(w in msg.lower() for w in ["erro", "error", "falha"]) else "ok"
+            log_panel_text.insert(tk.END, msg + "\n", color_tag)
+            log_panel_text.see(tk.END)
+            log_panel_text.config(state="disabled")
+        except Exception:
+            pass
 
     class TextRedirector:
         def __init__(self, widget, tag="stdout"):
@@ -876,7 +903,7 @@ def main():
     # (movido para a seção de botões principais abaixo)
     
     def atualizar_perfil_label():
-        perfil_label.config(text=f"▶ {perfil_ativo}")
+        perfil_label.config(text=f" {perfil_ativo.upper()}")
 
     # Controle de janelas
     janela_criar_perfil = None
@@ -1337,83 +1364,71 @@ def main():
         janela_excluir_perfil.protocol("WM_DELETE_WINDOW", on_close)
 
     # ═══════════════════════════════════════════════════════
-    # ⚡ POKÉMON-THEMED BUTTON PANEL ⚡
+    # ⚡ COMBO & CAPTURA BOXES (inside screen) ⚡
     # ═══════════════════════════════════════════════════════
 
-    # ── Action panel dentro da "tela" da pokédex ──
-    action_panel = tk.Frame(screen, bg="#0a0a1a")
-    action_panel.pack(fill="x", padx=6, pady=(2, 4))
+    # Container para os 2 cards + slider central
+    action_panel = tk.Frame(screen, bg="#27272a")
+    action_panel.pack(fill="x", padx=10, pady=(4, 6))
 
-    # ── Bloco COMBO (esquerda) ──
-    combo_card = tk.Frame(action_panel, bg="#12122a", padx=14, pady=10,
-                          highlightbackground="#ffcb05", highlightthickness=1)
-    combo_card.grid(row=0, column=0, padx=(6, 4), pady=4, sticky="nsew")
+    # ── COMBO BOX (esquerda) ──
+    combo_card = tk.Frame(action_panel, bg="#18181b", padx=10, pady=8,
+                          highlightbackground="#eab308", highlightthickness=2)
+    combo_card.grid(row=0, column=0, padx=(0, 4), pady=0, sticky="nsew")
 
-    tk.Label(combo_card, text="⚔", font=("Segoe UI Emoji", 20),
-             bg="#12122a", fg="#ffcb05").pack()
-    tk.Label(combo_card, text="COMBO", font=("Consolas", 10, "bold"),
-             bg="#12122a", fg="#ffcb05").pack()
+    tk.Label(combo_card, text="⚔", font=("Segoe UI Emoji", 26),
+             bg="#18181b", fg="#eab308").pack(pady=(4, 0))
+    tk.Label(combo_card, text="COMBO", font=("Consolas", 11, "bold"),
+             bg="#18181b", fg="#eab308").pack(pady=(2, 6))
 
     btn_combo_open = tk.Button(
         combo_card, text="⚙ Config", font=("Consolas", 9, "bold"),
-        bg="#3b4cca", fg="white", activebackground="#2a3ba0",
-        bd=0, padx=14, pady=4, cursor="hand2",
+        bg="#4f46e5", fg="white", activebackground="#3730a3",
+        bd=0, padx=20, pady=5, cursor="hand2",
         command=open_janelacombo
     )
-    btn_combo_open.pack(pady=(6, 4))
+    btn_combo_open.pack(fill="x", padx=8, pady=(0, 6))
 
-    combo_indicator = tk.Frame(combo_card, bg="#12122a")
-    combo_indicator.pack(pady=(2, 0))
-
-    combo_dot = tk.Canvas(combo_indicator, width=14, height=14,
-                          bg="#12122a", highlightthickness=0)
-    combo_dot.pack(side="left", padx=(0, 5))
-    combo_dot_id = combo_dot.create_oval(2, 2, 12, 12, fill="#ff1a1a", outline="#444", width=1)
-
+    # Toggle Combo ON/OFF (single button with embedded dot)
     button_activation = tk.Button(
-        combo_indicator, text="Desligado", font=("Consolas", 9, "bold"),
-        bg="#cc0000", fg="white", activebackground="#990000",
-        bd=0, padx=12, pady=2, cursor="hand2",
+        combo_card, text="● Desligado", font=("Consolas", 9, "bold"),
+        bg="#dc2626", fg="white", activebackground="#991b1b",
+        bd=0, pady=5, cursor="hand2",
         command=toggle_activation
     )
-    button_activation.pack(side="left")
+    button_activation.pack(fill="x", padx=8)
 
-    # Separador — pokeball vertical
-    sep_frame = tk.Frame(action_panel, bg="#0a0a1a", padx=2)
-    sep_frame.grid(row=0, column=1, padx=0, pady=4)
-    pokeball_sep = tk.Canvas(sep_frame, width=22, height=90,
-                             bg="#0a0a1a", highlightthickness=0)
-    pokeball_sep.pack()
-    pokeball_sep.create_line(11, 0, 11, 33, fill="#cc0000", width=2)
-    pokeball_sep.create_oval(3, 33, 19, 53, fill="#ffffff", outline="#444", width=2)
-    pokeball_sep.create_oval(7, 39, 15, 47, fill="#444", outline="#444")
-    pokeball_sep.create_line(11, 53, 11, 90, fill="#ffffff", width=2)
+    # ── VERTICAL SLIDER / SEPARATOR ──
+    sep_frame = tk.Frame(action_panel, bg="#27272a", width=20)
+    sep_frame.grid(row=0, column=1, padx=2, pady=10, sticky="ns")
+    slider_canvas = tk.Canvas(sep_frame, width=16, height=100,
+                              bg="#27272a", highlightthickness=0)
+    slider_canvas.pack(expand=True)
+    # Trilho vertical
+    slider_canvas.create_rectangle(6, 5, 10, 95, fill="#3f3f46", outline="")
+    # Bolinha do slider
+    slider_canvas.create_oval(1, 42, 15, 58, fill="white", outline="#18181b", width=2)
+    slider_canvas.create_rectangle(5, 48, 11, 52, fill="#a1a1aa", outline="")
 
-    # ── Bloco CAPTURA (direita) ──
-    captura_card = tk.Frame(action_panel, bg="#12122a", padx=14, pady=10,
-                            highlightbackground="#00d4ff", highlightthickness=1)
-    captura_card.grid(row=0, column=2, padx=(4, 6), pady=4, sticky="nsew")
+    # ── CAPTURA BOX (direita) ──
+    captura_card = tk.Frame(action_panel, bg="#18181b", padx=10, pady=8,
+                            highlightbackground="#22d3ee", highlightthickness=2)
+    captura_card.grid(row=0, column=2, padx=(4, 0), pady=0, sticky="nsew")
 
-    tk.Label(captura_card, text="📷", font=("Segoe UI Emoji", 20),
-             bg="#12122a", fg="#00d4ff").pack()
-    tk.Label(captura_card, text="CAPTURA", font=("Consolas", 10, "bold"),
-             bg="#12122a", fg="#00d4ff").pack()
+    tk.Label(captura_card, text="📷", font=("Segoe UI Emoji", 26),
+             bg="#18181b", fg="#22d3ee").pack(pady=(4, 0))
+    tk.Label(captura_card, text="CAPTURA", font=("Consolas", 11, "bold"),
+             bg="#18181b", fg="#22d3ee").pack(pady=(2, 6))
 
     btn_captura_open = tk.Button(
         captura_card, text="⚙ Config", font=("Consolas", 9, "bold"),
         bg="#7c3aed", fg="white", activebackground="#5b21b6",
-        bd=0, padx=14, pady=4, cursor="hand2",
+        bd=0, padx=20, pady=5, cursor="hand2",
         command=abrir_captura
     )
-    btn_captura_open.pack(pady=(6, 4))
+    btn_captura_open.pack(fill="x", padx=8, pady=(0, 6))
 
-    captura_indicator = tk.Frame(captura_card, bg="#12122a")
-    captura_indicator.pack(pady=(2, 0))
-
-    captura_dot = tk.Canvas(captura_indicator, width=14, height=14,
-                            bg="#12122a", highlightthickness=0)
-    captura_dot.pack(side="left", padx=(0, 5))
-    captura_dot_id = captura_dot.create_oval(2, 2, 12, 12, fill="#ff1a1a", outline="#444", width=1)
+    # Toggle Captura ON/OFF (single button with embedded dot)
 
     def toggle_captura_btn():
         """Toggle captura scan habilitado com visual feedback + overlay."""
@@ -1421,8 +1436,8 @@ def main():
         if captura_scan_habilitado:
             captura_scan_habilitado = False
             captura_modo_ativo = False
-            btn_captura_main_toggle.config(text="Desligado", bg="#cc0000")
-            captura_dot.itemconfig(captura_dot_id, fill="#ff1a1a")
+            btn_captura_main_toggle.config(text="● Desligado", bg="#dc2626")
+            scan_status_lbl.config(text="SCAN DESABILITADO")
             try:
                 if update_overlay_scan: update_overlay_scan()
             except Exception:
@@ -1430,8 +1445,8 @@ def main():
             print("📷 Captura desligada")
         else:
             captura_scan_habilitado = True
-            btn_captura_main_toggle.config(text="Ligado", bg="#00a651")
-            captura_dot.itemconfig(captura_dot_id, fill="#00ff88")
+            btn_captura_main_toggle.config(text="● Ligado", bg="#16a34a")
+            scan_status_lbl.config(text="SCAN HABILITADO")
             try:
                 if update_overlay_scan: update_overlay_scan()
             except Exception:
@@ -1439,16 +1454,17 @@ def main():
             print("📷 Captura ligada — pressione G para scan!")
 
     btn_captura_main_toggle = tk.Button(
-        captura_indicator, text="Desligado" if not captura_scan_habilitado else "Ligado",
+        captura_card,
+        text="● Desligado" if not captura_scan_habilitado else "● Ligado",
         font=("Consolas", 9, "bold"),
-        bg="#cc0000" if not captura_scan_habilitado else "#00a651",
-        fg="white", activebackground="#990000",
-        bd=0, padx=12, pady=2, cursor="hand2",
+        bg="#dc2626" if not captura_scan_habilitado else "#16a34a",
+        fg="white", activebackground="#991b1b",
+        bd=0, pady=5, cursor="hand2",
         command=toggle_captura_btn
     )
-    btn_captura_main_toggle.pack(side="left")
+    btn_captura_main_toggle.pack(fill="x", padx=8)
 
-    # Grid weights para distribuir espaço
+    # Grid weights
     action_panel.columnconfigure(0, weight=1)
     action_panel.columnconfigure(2, weight=1)
 
@@ -1457,59 +1473,115 @@ def main():
     def _enhanced_toggle():
         _orig_toggle()
         if combo_active:
-            combo_dot.itemconfig(combo_dot_id, fill="#00ff88")
-            button_activation.config(text="Ativado", bg="#00a651")
+            button_activation.config(text="● Ativado", bg="#16a34a")
         else:
-            combo_dot.itemconfig(combo_dot_id, fill="#ff1a1a")
-            button_activation.config(text="Desligado", bg="#cc0000")
+            button_activation.config(text="● Desligado", bg="#dc2626")
     button_activation.config(command=_enhanced_toggle)
 
     # ═══════════════════════════════════════════════════════
-    # 🔴 SEÇÃO INFERIOR DA POKÉDEX — DOBRADIÇA + PERFIS
+    # 📋 LOG SCREEN (inside screen, bottom)
     # ═══════════════════════════════════════════════════════
 
-    # Dobradiça preta (hinge line)
-    hinge = tk.Frame(root, bg="#222222", height=6)
-    hinge.pack(fill="x", padx=10, pady=(2, 0))
-    # Linhas decorativas na dobradiça
-    hinge_canvas = tk.Canvas(hinge, height=6, bg="#222222", highlightthickness=0)
-    hinge_canvas.pack(fill="x")
-    hinge_canvas.create_line(0, 2, 440, 2, fill="#444444", width=1)
-    hinge_canvas.create_line(0, 4, 440, 4, fill="#333333", width=1)
+    log_panel = tk.Frame(screen, bg="#000000", bd=2, relief="solid",
+                         highlightbackground="#3f3f46", highlightthickness=1)
+    log_panel.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-    # Parte inferior vermelha
-    bottom_section = tk.Frame(root, bg="#cc0000")
-    bottom_section.pack(fill="x", padx=10, pady=(0, 10))
+    # Header do log
+    log_header = tk.Frame(log_panel, bg="#000000")
+    log_header.pack(fill="x", padx=8, pady=(6, 2))
+    tk.Label(log_header, text="SYSTEM_LOGS", font=("Consolas", 8),
+             bg="#000000", fg="#52525b").pack(side="left")
+    # Cursor piscante
+    blink_lbl = tk.Label(log_header, text="_", font=("Consolas", 9, "bold"),
+                         bg="#000000", fg="#52525b")
+    blink_lbl.pack(side="right")
+    def _blink():
+        cur = blink_lbl.cget("fg")
+        blink_lbl.config(fg="#000000" if cur != "#000000" else "#52525b")
+        root.after(500, _blink)
+    _blink()
 
-    # D-pad decorativo pequeno (esquerda)
-    dpad = tk.Canvas(bottom_section, width=40, height=40, bg="#cc0000", highlightthickness=0)
-    dpad.pack(side="left", padx=(10, 0), pady=6)
-    # Cruz do D-pad
-    dpad.create_rectangle(14, 4, 26, 36, fill="#222222", outline="#444444", width=1)
-    dpad.create_rectangle(4, 14, 36, 26, fill="#222222", outline="#444444", width=1)
-    dpad.create_oval(16, 16, 24, 24, fill="#555555", outline="")
+    # Separador fino
+    tk.Frame(log_panel, bg="#27272a", height=1).pack(fill="x", padx=8)
 
-    # Botões de perfil — BEM separados
-    perfil_frame = tk.Frame(bottom_section, bg="#cc0000")
-    perfil_frame.pack(side="left", expand=True, pady=8)
+    # Texto do log (visível, scrollável)
+    log_panel_text = tk.Text(log_panel, wrap="word", state="disabled",
+                             bg="#000000", fg="#a1a1aa", font=("Consolas", 8),
+                             bd=0, padx=8, pady=4, height=6,
+                             insertbackground="#000000", selectbackground="#3f3f46",
+                             cursor="arrow")
+    log_panel_text.pack(fill="both", expand=True, padx=2, pady=(2, 4))
+    log_panel_text.tag_config("ok", foreground="#34d399")
+    log_panel_text.tag_config("err", foreground="#f87171")
 
-    btn_criar = tk.Button(perfil_frame, text="＋ Criar", font=("Consolas", 9, "bold"),
-                          bg="#ffcb05", fg="#1a1a2e", bd=0, padx=14, pady=5,
-                          cursor="hand2", activebackground="#ffd633",
+    # Mensagens iniciais
+    log_panel_text.config(state="normal")
+    log_panel_text.insert(tk.END, "Sistema iniciado...\n", "ok")
+    log_panel_text.insert(tk.END, "Aguardando comando do usuário.\n")
+    log_panel_text.insert(tk.END, "Scan desabilitado por padrão.\n")
+    log_panel_text.config(state="disabled")
+
+    # ═══════════════════════════════════════════════════════
+    # 🔴 BOTTOM CONTROLS (D-PAD + BUTTONS + GEAR)
+    # ═══════════════════════════════════════════════════════
+
+    bottom_section = tk.Frame(root, bg="#dc2626")
+    bottom_section.pack(fill="x", padx=16, pady=(4, 2))
+
+    # D-pad decorativo (esquerda)
+    dpad = tk.Canvas(bottom_section, width=52, height=52, bg="#dc2626", highlightthickness=0)
+    dpad.grid(row=0, column=0, padx=(4, 8), pady=4)
+    # Cruz horizontal
+    dpad.create_rectangle(0, 18, 52, 34, fill="#27272a", outline="#3f3f46", width=1)
+    # Cruz vertical
+    dpad.create_rectangle(18, 0, 34, 52, fill="#27272a", outline="#3f3f46", width=1)
+    # Centro
+    dpad.create_oval(20, 20, 32, 32, fill="#18181b", outline="#3f3f46", width=1)
+
+    # 3 Botões de ação (centro)
+    btn_frame = tk.Frame(bottom_section, bg="#dc2626")
+    btn_frame.grid(row=0, column=1, padx=4, pady=4, sticky="ew")
+    bottom_section.columnconfigure(1, weight=1)
+
+    # Botão CRIAR (amarelo com shadow)
+    btn_criar_f = tk.Frame(btn_frame, bg="#a16207")
+    btn_criar_f.pack(side="left", expand=True, fill="x", padx=3)
+    btn_criar = tk.Button(btn_criar_f, text="＋\nCRIAR", font=("Consolas", 8, "bold"),
+                          bg="#eab308", fg="black", activebackground="#facc15",
+                          bd=0, padx=6, pady=4, cursor="hand2",
                           command=criar_perfil)
-    btn_criar.grid(row=0, column=0, padx=10)
+    btn_criar.pack(fill="x", padx=0, pady=(0, 3))
 
-    btn_selecionar = tk.Button(perfil_frame, text="📁 Selecionar", font=("Consolas", 9, "bold"),
-                               bg="#3b4cca", fg="white", bd=0, padx=14, pady=5,
-                               cursor="hand2", activebackground="#2a3ba0",
+    # Botão SELECIONAR (azul com shadow)
+    btn_sel_f = tk.Frame(btn_frame, bg="#1e3a8a")
+    btn_sel_f.pack(side="left", expand=True, fill="x", padx=3)
+    btn_selecionar = tk.Button(btn_sel_f, text="▷\nSELECIONAR", font=("Consolas", 8, "bold"),
+                               bg="#2563eb", fg="white", activebackground="#3b82f6",
+                               bd=0, padx=6, pady=4, cursor="hand2",
                                command=selecionar_perfil)
-    btn_selecionar.grid(row=0, column=1, padx=10)
+    btn_selecionar.pack(fill="x", padx=0, pady=(0, 3))
 
-    btn_excluir = tk.Button(perfil_frame, text="✕ Excluir", font=("Consolas", 9, "bold"),
-                            bg="#aa0000", fg="white", bd=0, padx=14, pady=5,
-                            cursor="hand2", activebackground="#880000",
+    # Botão EXCLUIR (vermelho escuro com shadow)
+    btn_exc_f = tk.Frame(btn_frame, bg="#7f1d1d")
+    btn_exc_f.pack(side="left", expand=True, fill="x", padx=3)
+    btn_excluir = tk.Button(btn_exc_f, text="🗑\nEXCLUIR", font=("Consolas", 8, "bold"),
+                            bg="#b91c1c", fg="white", activebackground="#dc2626",
+                            bd=0, padx=6, pady=4, cursor="hand2",
                             command=excluir_perfil_ui)
-    btn_excluir.grid(row=0, column=2, padx=10)
+    btn_excluir.pack(fill="x", padx=0, pady=(0, 3))
+
+    # Botão Config/Gear (direita)
+    btn_gear = tk.Button(bottom_section, text="⚙", font=("Segoe UI Emoji", 18),
+                         bg="#991b1b", fg="#eab308", activebackground="#7f1d1d",
+                         bd=2, relief="ridge", width=3, height=1, cursor="hand2",
+                         command=lambda: abrir_configuracao())
+    btn_gear.grid(row=0, column=2, padx=(8, 4), pady=4)
+
+    # ── Speaker grilles (detalhe inferior) ──
+    speaker_frame = tk.Frame(root, bg="#dc2626")
+    speaker_frame.pack(pady=(0, 6))
+    for _ in range(4):
+        tk.Frame(speaker_frame, bg="#b91c1c", width=32, height=3).pack(side="left", padx=3, pady=2)
 
 # ========== MINI OVERLAY ==========
     # Funções de minimizar/restaurar/arrastar
