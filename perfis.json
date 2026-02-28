@@ -35,22 +35,12 @@
       },
       {
         "key": "4",
-        "delay": 0.8,
+        "delay": 1.0,
         "type": "atk"
       },
       {
         "key": "5",
-        "delay": 0.9,
-        "type": "atk"
-      },
-      {
-        "key": "6",
         "delay": 1.2,
-        "type": "atk"
-      },
-      {
-        "key": "7",
-        "delay": 1.4,
         "type": "atk"
       },
       {
@@ -62,12 +52,12 @@
     "nightmare_attacks": [],
     "combo_mode_active": "HUNT NORMAL",
     "pos_poke": [
-      29,
-      51
+      28,
+      54
     ],
     "pos_center": [
-      929,
-      334
+      950,
+      307
     ],
     "bot_hotkey": "INSERT"
   }
