@@ -19,78 +19,55 @@
         "type": "medicine"
       },
       {
+        "key": "q",
+        "delay": 0.5,
+        "type": "atk"
+      },
+      {
         "key": "2",
-        "delay": 0.7,
+        "delay": 0.6,
         "type": "atk"
       },
       {
         "key": "3",
-        "delay": 0.5,
+        "delay": 0.9,
         "type": "atk"
       },
       {
         "key": "4",
-        "delay": 0.5,
+        "delay": 0.8,
         "type": "atk"
       },
       {
         "key": "5",
-        "delay": 0.5,
+        "delay": 0.9,
         "type": "atk"
+      },
+      {
+        "key": "6",
+        "delay": 1.2,
+        "type": "atk"
+      },
+      {
+        "key": "7",
+        "delay": 1.4,
+        "type": "atk"
+      },
+      {
+        "key": "r",
+        "delay": 1.2,
+        "type": "revive"
       }
     ],
     "nightmare_attacks": [],
     "combo_mode_active": "HUNT NORMAL",
     "pos_poke": [
       29,
-      46
+      51
     ],
     "pos_center": [
-      934,
-      332
-    ],
-    "bot_hotkey": "INSERT"
-  },
-  "teste": {
-    "pokestop_key": "tab",
-    "pokemedi_key": "f",
-    "pokeattack_key1": "tab",
-    "pokeattack_key2": "f",
-    "pokeattack_key3": "2",
-    "pokeattack_key4": "3",
-    "pokeattack_key5": "4",
-    "pokeattack_key6": "5",
-    "pokeattack_key7": "r",
-    "pokeattack_key8": "2",
-    "pokeattack_key9": "3",
-    "pokeattack_key10": "4",
-    "pokeattack_key11": "5",
-    "pokeattack_key12": "",
-    "revive_key": "r",
-    "pokestop_delay": 0.5,
-    "pokemedi_delay": 0.5,
-    "pokeattack_delay1": 0.5,
-    "pokeattack_delay2": 0.5,
-    "pokeattack_delay3": 0.5,
-    "pokeattack_delay4": 1.0,
-    "pokeattack_delay5": 1.2,
-    "pokeattack_delay6": 1.0,
-    "pokeattack_delay7": 0.5,
-    "pokeattack_delay8": 1.0,
-    "pokeattack_delay9": 0.9,
-    "pokeattack_delay10": 0.8,
-    "pokeattack_delay11": 1.2,
-    "pokeattack_delay12": 0.5,
-    "combo_start_key": "h",
-    "nightmare_attacks": [],
-    "combo_mode_active": "HUNT NORMAL",
-    "pos_poke": [
-      29,
-      46
-    ],
-    "pos_center": [
-      934,
-      332
+      929,
+      334
     ],
     "bot_hotkey": "INSERT"
   }

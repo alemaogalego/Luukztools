@@ -104,10 +104,13 @@ def revive(revive_key):
     if revive_key:
         # Tudo via Win32 API — atômico, não importa se mexer o mouse
         _win_move_click(pos_poke[0], pos_poke[1], 'right')
+        time.sleep(0.2)
         keyboard.press_and_release(revive_key)
+        time.sleep(0.2)
         _win_move_click(pos_poke[0], pos_poke[1], 'right')
         time.sleep(0.8)
         keyboard.press_and_release("e")
+        time.sleep(0.1)
         _win_move(pos_center[0], pos_center[1])
     return True
 
