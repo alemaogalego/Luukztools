@@ -112,20 +112,41 @@ def revive(revive_key):
     return True
 
 
-def combo_nightmare(pokestop_key, pokemedi_key, pokestop_delay, pokemedi_delay, nightmare_attacks):
+def combo_hunt_dynamic(attacks):
+    """
+    Executa combo Hunt Normal com lista dinâmica de ações.
+    attacks: lista de dicts [{"key": "q", "delay": 0.5, "type": "atk"}, ...]
+    - type "atk": pressiona key + delay
+    - type "revive": executa rotina completa de revive (right-click, key, right-click, e, move)
+    - type "medicine"/"pokestop": pressiona key + delay
+    """
+    for atk in attacks:
+        key = atk.get("key", "")
+        delay = atk.get("delay", 0.5)
+        tipo = atk.get("type", "atk")
+
+        if not key:
+            continue
+
+        if tipo == "revive":
+            revive(key)
+        else:
+            keyboard.press_and_release(key)
+            time.sleep(delay)
+
+    print("Combo Hunt executado")
+    return True
+
+
+def combo_nightmare(nightmare_attacks):
     """
     Executa combo no modo Nightmare.
     nightmare_attacks: lista de dicts [{"key1": "alt", "key2": "1", "delay": 0.5, "type": "pokeball"}, ...]
     - type "pokeball": pressiona key1+key2 juntos (combo key para troca de pokémon)
     - type "attack": pressiona key1 sozinha (ataque normal)
+    - type "revive": executa rotina completa de revive
+    - type "medicine"/"pokestop": pressiona key + delay
     """
-    if pokestop_key:
-        keyboard.press_and_release(pokestop_key)
-        time.sleep(pokestop_delay)
-    if pokemedi_key:
-        keyboard.press_and_release(pokemedi_key)
-        time.sleep(pokemedi_delay)
-
     for atk in nightmare_attacks:
         key1 = atk.get("key1", "")
         key2 = atk.get("key2", "")
@@ -135,14 +156,16 @@ def combo_nightmare(pokestop_key, pokemedi_key, pokestop_delay, pokemedi_delay, 
         if not key1:
             continue
 
-        if tipo == "pokeball" and key2:
+        if tipo == "revive":
+            revive(key1)
+        elif tipo == "pokeball" and key2:
             # Troca de pokémon: combo key (ex: alt+1)
             keyboard.press_and_release(f"{key1}+{key2}")
+            time.sleep(delay)
         else:
             # Ataque normal: tecla única
             keyboard.press_and_release(key1)
-
-        time.sleep(delay)
+            time.sleep(delay)
 
     print("Combo Nightmare executado")
     return True
