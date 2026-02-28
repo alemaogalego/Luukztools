@@ -3596,7 +3596,7 @@ def main():
     # Track (trilha): x=116-156, y=5-19 — contorno vermelho/verde
     bot_track = bg.create_rectangle(116, 5, 156, 19, fill="#0f0f0f", outline="#ff3b3b", width=1)
     # Texto OFF/ON no centro da trilha
-    bot_text = bg.create_text(136, 12, text="OFF", fill="#ff3b3b",
+    bot_text = bg.create_text(136, 12, text="  OFF", fill="#ff3b3b",
                                font=("Consolas", 7, "bold"), anchor="center")
     # Pokeball (slider) — OFF = esquerda
     bot_ball = bg.create_oval(117, 6, 131, 18, fill="#ff3b3b", outline="#444444", width=1)
@@ -3664,7 +3664,7 @@ def main():
             else:
                 color = "#ff3b3b"
                 bg.itemconfig(bot_track, outline=color)
-                bg.itemconfig(bot_text, text="OFF", fill=color)
+                bg.itemconfig(bot_text, text="  OFF", fill=color)
                 bg.itemconfig(bot_ball, fill=color)
                 # Pokeball na esquerda
                 bg.coords(bot_ball, 117, 6, 131, 18)

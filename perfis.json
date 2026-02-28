@@ -24,9 +24,19 @@
         "type": "atk"
       },
       {
-        "key": "r",
-        "delay": 1.2,
-        "type": "revive"
+        "key": "3",
+        "delay": 0.5,
+        "type": "atk"
+      },
+      {
+        "key": "4",
+        "delay": 0.5,
+        "type": "atk"
+      },
+      {
+        "key": "5",
+        "delay": 0.5,
+        "type": "atk"
       }
     ],
     "nightmare_attacks": [],
