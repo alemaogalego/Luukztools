@@ -2,6 +2,7 @@ import json
 import os
 import keyboard
 import combo
+import config_window
 import tkinter as tk
 from PIL import Image, ImageTk, ImageGrab
 import threading
@@ -66,6 +67,11 @@ captura_thread = None
 running = False
 combo_active = False  # Variável para controlar o estado do botão "Desligado"
 
+# ---- Master switch (bot ligado/desligado) ----
+bot_active = False
+bot_hotkey = "F1"  # hotkey global para ligar/desligar o bot
+update_bot_indicator = None  # callback UI para atualizar indicador
+
 # Variáveis globais para armazenar os delays configurados
 pokestop_delay = ""
 pokemedi_delay = ""
@@ -106,6 +112,7 @@ def aplicar_perfil(nome):
     global pokestop_delay, pokemedi_delay, pokeattack_delay1, pokeattack_delay2, pokeattack_delay3, pokeattack_delay4, pokeattack_delay5
     global pokeattack_delay6, pokeattack_delay7, pokeattack_delay8, pokeattack_delay9, pokeattack_delay10, pokeattack_delay11, pokeattack_delay12, combo_start_key, lbl
     global nightmare_attacks, combo_mode_active
+    global bot_hotkey
 
     perfil = perfis.get(nome, {})
     pokestop_key = perfil.get("pokestop_key", "")
@@ -140,6 +147,7 @@ def aplicar_perfil(nome):
     combo_start_key = perfil.get("combo_start_key", "")
     nightmare_attacks = perfil.get("nightmare_attacks", [])
     combo_mode_active = perfil.get("combo_mode_active", "HUNT NORMAL")
+    bot_hotkey = perfil.get("bot_hotkey", "F1")
     # Restaura posições do revive/center salvos no perfil
     saved_poke = perfil.get("pos_poke", None)
     if saved_poke:
@@ -189,7 +197,8 @@ def salvar_perfil_atual(nome):
         "nightmare_attacks": nightmare_attacks,
         "combo_mode_active": combo_mode_active,
         "pos_poke": list(combo.pos_poke),
-        "pos_center": list(combo.pos_center)
+        "pos_center": list(combo.pos_center),
+        "bot_hotkey": bot_hotkey
     }
     salvar_perfis()
 
@@ -201,6 +210,9 @@ def excluir_perfil(nome):
 combo_start_key = ""  # Defina a tecla padrão ou carregue do perfil
 
 def start_combo():
+    if not bot_active:
+        print("⚠ Bot desligado! Combo não executa.")
+        return
     if combo_active:
         if combo_mode_active == "NIGHTMARE":
             # Nightmare: pokestop + medicine + nightmare attacks com combo keys
@@ -228,8 +240,41 @@ def start_combo():
     else:
         print("Combo está desligado, não executa!")
 
+def toggle_bot():
+    """Liga/desliga o bot inteiro (master switch)."""
+    global bot_active, combo_active, captura_modo_ativo
+    bot_active = not bot_active
+    if not bot_active:
+        # Desativar tudo quando desligar o bot
+        if combo_active:
+            combo_active = False
+            try:
+                keyboard.remove_hotkey(combo_start_key)
+            except Exception:
+                pass
+            print("Combo desativado (bot desligado)")
+            try: update_overlay_status()
+            except: pass
+        if captura_modo_ativo:
+            captura_modo_ativo = False
+            try:
+                if update_overlay_scan: update_overlay_scan()
+            except Exception:
+                pass
+            print("Scan de captura desligado (bot desligado)")
+    state = "ON" if bot_active else "OFF"
+    print(f"🤖 Bot {state}")
+    try:
+        if update_bot_indicator:
+            update_bot_indicator()
+    except Exception:
+        pass
+
 def toggle_activation():
     global combo_active
+    if not bot_active:
+        print("⚠ Bot desligado! Ligue primeiro com a hotkey global.")
+        return
     if combo_active:
         combo_active = False
         keyboard.remove_hotkey(combo_start_key)
@@ -348,11 +393,12 @@ def main():
     scan_badge = tk.Frame(perfil_bar, bg="#27272a", bd=1, relief="solid",
                           highlightbackground="#3f3f46", highlightthickness=1)
     scan_badge.pack(side="right", padx=6, pady=4)
-    tk.Label(scan_badge, text="⚠", font=("Segoe UI Emoji", 9),
-             bg="#27272a", fg="#eab308").pack(side="left", padx=(4, 2))
-    scan_status_lbl = tk.Label(scan_badge, text="SCAN DESABILITADO",
+    scan_icon_lbl = tk.Label(scan_badge, text="⚠", font=("Segoe UI Emoji", 9),
+             bg="#27272a", fg="#f87171")
+    scan_icon_lbl.pack(side="left", padx=(4, 2))
+    scan_status_lbl = tk.Label(scan_badge, text="BOT OFF",
                                font=("Consolas", 8, "bold"),
-                               bg="#27272a", fg="#34d399")
+                               bg="#27272a", fg="#f87171")
     scan_status_lbl.pack(side="left", padx=(0, 2))
     tk.Label(scan_badge, text="📋", font=("Segoe UI Emoji", 9),
              bg="#27272a", fg="#22d3ee").pack(side="left", padx=(2, 4))
@@ -460,51 +506,41 @@ def main():
     sys.stdout = TextRedirector(log_text)
     sys.stderr = TextRedirector(log_text)
     
+    _janela_cfg_ref = [None]
+
+    def _on_hotkey_changed(old_key, new_key):
+        """Re-registra a hotkey global do bot."""
+        global bot_hotkey
+        try:
+            keyboard.remove_hotkey(old_key)
+        except Exception:
+            pass
+        bot_hotkey = new_key
+        keyboard.add_hotkey(new_key, toggle_bot, suppress=False)
+
     def abrir_configuracao():
-        cfg = tk.Toplevel(root)             # cfg só existe aqui dentro
-        cfg.title("Configuração")
-        cfg.geometry("500x200")
-        cfg.resizable(False, False)
+        config_window.abrir_configuracao(root, {
+            "janela_cfg": _janela_cfg_ref,
+            "get_capturando": lambda: capturando,
+            "set_capturando": _set_capturando,
+            "_loop_captura": _loop_captura,
+            "bot_hotkey": [bot_hotkey],
+            "on_hotkey_changed": _on_hotkey_changed,
+            "salvar_perfil_atual": salvar_perfil_atual,
+            "perfil_ativo": perfil_ativo,
+            "perfis": perfis,
+            "salvar_perfis": salvar_perfis,
+        })
 
-        tk.Label(cfg, text="Modo Captura do revive e pos_center", font=("Arial", 12, "bold")).pack(pady=10)
-        tk.Label(cfg, text="Clique em Ativar e depois pressione 'h' e na foto do pokemon para revive \n" 
-                 "O mesmo para pressione 'j' para perto do seu personagem onde quiser salvar o clique.", justify="center").pack()
-
-        status_var = tk.StringVar(value="Desativado")
-
-        def start_captura():
-            nonlocal status_var
-            global capturando, captura_thread
-            if capturando:
-                return
-            capturando = True
-            status_var.set("Ativado (aperte 'h')")
+    def _set_capturando(val):
+        global capturando, captura_thread
+        capturando = val
+        if val:
             captura_thread = threading.Thread(target=_loop_captura, daemon=True)
             captura_thread.start()
-            print("Modo captura iniciado — aperte 'h' para gravar o revive e 'j' para gravar o center perto do seu personagem.")
 
-        def stop_captura():
-            nonlocal status_var
-            global capturando
-            if not capturando:
-                return
-            capturando = False
-            status_var.set("Desativado")
-            print("Modo captura finalizado.")
-
-        tk.Button(cfg, text="▶ Ativar captura (h = poke, j = center)", command=start_captura).pack(pady=10)
-        tk.Button(cfg, text="■ Desativar captura", command=stop_captura).pack()
-
-        tk.Label(cfg, textvariable=status_var, fg="blue").pack(pady=8)
-
-        def on_close():
-            # garante que a thread saia do loop na próxima tecla ou imediatamente se não estiver esperando
-            stop_captura()
-            cfg.destroy()
-
-        cfg.protocol("WM_DELETE_WINDOW", on_close)
-
-    # btn_cfg já está no top_bar da Pokédex
+    # Registra hotkey global do bot
+    keyboard.add_hotkey(bot_hotkey, toggle_bot, suppress=False)
 
     # ========== SISTEMA DE CAPTURA (GAVETAS) ==========
     janela_captura = None
@@ -613,6 +649,9 @@ def main():
     def toggle_captura_global():
         """Liga/desliga o scan global de captura."""
         global captura_modo_ativo, captura_thread_scan, captura_scan_habilitado
+        if not bot_active:
+            print("⚠ Bot desligado! Ligue primeiro com a hotkey global.")
+            return
         if not captura_scan_habilitado:
             print("⚠ Scan desabilitado. Ligue primeiro na interface principal.")
             return
@@ -1433,11 +1472,13 @@ def main():
     def toggle_captura_btn():
         """Toggle captura scan habilitado com visual feedback + overlay."""
         global captura_scan_habilitado, captura_modo_ativo
+        if not bot_active:
+            print("⚠ Bot desligado! Ligue primeiro com a hotkey global.")
+            return
         if captura_scan_habilitado:
             captura_scan_habilitado = False
             captura_modo_ativo = False
             btn_captura_main_toggle.config(text="● Desligado", bg="#dc2626")
-            scan_status_lbl.config(text="SCAN DESABILITADO")
             try:
                 if update_overlay_scan: update_overlay_scan()
             except Exception:
@@ -1446,7 +1487,6 @@ def main():
         else:
             captura_scan_habilitado = True
             btn_captura_main_toggle.config(text="● Ligado", bg="#16a34a")
-            scan_status_lbl.config(text="SCAN HABILITADO")
             try:
                 if update_overlay_scan: update_overlay_scan()
             except Exception:
@@ -1471,12 +1511,32 @@ def main():
     # Combo toggle visual update
     _orig_toggle = toggle_activation
     def _enhanced_toggle():
+        if not bot_active:
+            print("⚠ Bot desligado! Ligue primeiro com a hotkey global.")
+            return
         _orig_toggle()
         if combo_active:
             button_activation.config(text="● Ativado", bg="#16a34a")
         else:
             button_activation.config(text="● Desligado", bg="#dc2626")
     button_activation.config(command=_enhanced_toggle)
+
+    # Bot master switch indicator
+    global update_bot_indicator
+    def update_bot_indicator():
+        if bot_active:
+            scan_status_lbl.config(text="BOT ON", fg="#34d399")
+            scan_icon_lbl.config(text="✔", fg="#34d399")
+        else:
+            scan_status_lbl.config(text="BOT OFF", fg="#f87171")
+            scan_icon_lbl.config(text="⚠", fg="#f87171")
+        # Also update toggle buttons UI
+        try:
+            if not bot_active:
+                button_activation.config(text="● Desligado", bg="#dc2626")
+                btn_captura_main_toggle.config(text="● Desligado", bg="#dc2626")
+        except Exception:
+            pass
 
     # ═══════════════════════════════════════════════════════
     # 📋 LOG SCREEN (inside screen, bottom)

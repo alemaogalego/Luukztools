@@ -14,7 +14,7 @@
     "pokeattack_key10": "",
     "pokeattack_key11": "",
     "pokeattack_key12": "",
-    "revive_key": "r",
+    "revive_key": "",
     "pokestop_delay": 0.5,
     "pokemedi_delay": 0.5,
     "pokeattack_delay1": 0.5,
@@ -39,7 +39,8 @@
     "pos_center": [
       934,
       332
-    ]
+    ],
+    "bot_hotkey": "INSERT"
   },
   "HUNTNW": {
     "pokestop_key": "tab",
