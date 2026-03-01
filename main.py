@@ -87,6 +87,7 @@ captura_game_region_thread = None
 # Variável global para controlar o estado do combo
 running = False
 combo_active = False  # Variável para controlar o estado do botão "Desligado"
+combo_running = False  # True enquanto o combo está executando (H pressionado até finalizar)
 
 # ---- Master switch (bot ligado/desligado) ----
 bot_active = False
@@ -267,6 +268,7 @@ def has_enemies():
         return True  # em caso de erro, assume que tem
 
 def start_combo():
+    global combo_running
     if not bot_active:
         print("⚠ Bot desligado! Combo não executa.")
         return
@@ -276,6 +278,10 @@ def start_combo():
         if not enemies:
             print("🚫 Nenhum pokémon à vista! Combo cancelado.")
             return
+        # Sinaliza combo ON no overlay
+        combo_running = True
+        try: update_overlay_status()
+        except: pass
         print("⚔ Inimigos detectados! Executando combo...")
         if combo_mode_active == "NIGHTMARE":
             result = combo.combo_nightmare(nightmare_attacks, should_continue=has_enemies)
@@ -291,6 +297,10 @@ def start_combo():
             print("✅ Revive usado com sucesso!")
         elif result is False and not revive_key:
             print("💀 Inimigos eliminados! Revive não configurado (sem tecla).")
+        # Sinaliza combo OFF no overlay
+        combo_running = False
+        try: update_overlay_status()
+        except: pass
     else:
         print("Combo está desligado, não executa!")
 
@@ -4055,93 +4065,98 @@ def main():
     mini.withdraw()
     mini.overrideredirect(True)
     mini.attributes("-topmost", True)
-    mini.geometry("200x90+1200+680")
+    mini.geometry("210x100+1200+680")
     mini.attributes("-alpha", 0.93)
 
     # Canvas principal — estilo moderno escuro
-    bg = tk.Canvas(mini, width=200, height=90, highlightthickness=0)
+    bg = tk.Canvas(mini, width=210, height=100, highlightthickness=0)
     bg.place(x=0, y=0, relwidth=1, relheight=1)
 
-    # Fundo gradiente fake (3 faixas)
-    bg.create_rectangle(0, 0, 200, 30, fill="#0f0f0f", outline="")
-    bg.create_rectangle(0, 30, 200, 60, fill="#1a1a2e", outline="")
-    bg.create_rectangle(0, 60, 200, 90, fill="#16213e", outline="")
+    # Fundo escuro
+    bg.create_rectangle(0, 0, 210, 100, fill="#0c0c0e", outline="")
 
     # Linha accent neon no topo
-    bg.create_rectangle(0, 0, 200, 2, fill="#00d4ff", outline="")
+    bg.create_rectangle(0, 0, 210, 2, fill="#00d4ff", outline="")
 
     # Linha accent neon embaixo
-    bg.create_rectangle(0, 88, 200, 90, fill="#7c3aed", outline="")
+    bg.create_rectangle(0, 98, 210, 100, fill="#7c3aed", outline="")
 
-    # Nome do perfil
-    lbl = bg.create_text(12, 13, text=f"⚡ {perfil_ativo}",
+    # ── BARRA SUPERIOR: perfil + BOT toggle + status dots ──
+    # Nome do perfil (esquerda)
+    lbl = bg.create_text(10, 12, text=f"⚡ {perfil_ativo}",
                          fill="#00d4ff", font=("Consolas", 9, "bold"), anchor="w")
 
-    # Status dot (combo ativo/desativado)
-    status_dot_id = bg.create_oval(178, 5, 192, 19, fill="#ff3b3b", outline="#333333", width=1)
-
-    # Pokeball scan indicator (captura ligado/desligado)
-    # Bolinha exterior (vermelho/verde)
-    scan_ball_outer = bg.create_oval(160, 5, 174, 19, fill="#ff3b3b", outline="#333333", width=1)
-    # Linha do meio da pokeball
-    bg.create_line(160, 12, 174, 12, fill="#333333", width=1)
-    # Centro da pokeball
-    scan_ball_center = bg.create_oval(164, 9, 170, 15, fill="white", outline="#333333", width=1)
-
-    # ---- Indicador BOT (mini toggle com texto OFF/ON + pokeball) ----
-    # Track (trilha): x=116-156, y=5-19 — contorno vermelho/verde
-    bot_track = bg.create_rectangle(116, 5, 156, 19, fill="#0f0f0f", outline="#ff3b3b", width=1)
-    # Texto OFF/ON no centro da trilha
-    bot_text = bg.create_text(136, 12, text="  OFF", fill="#ff3b3b",
+    # BOT toggle (mini switch)
+    bot_track = bg.create_rectangle(118, 4, 158, 18, fill="#0f0f0f", outline="#ff3b3b", width=1)
+    bot_text = bg.create_text(138, 11, text="  OFF", fill="#ff3b3b",
                                font=("Consolas", 7, "bold"), anchor="center")
-    # Pokeball (slider) — OFF = esquerda
-    bot_ball = bg.create_oval(117, 6, 131, 18, fill="#ff3b3b", outline="#444444", width=1)
-    bot_ball_line = bg.create_line(117, 12, 131, 12, fill="#444444", width=1)
-    bot_ball_center = bg.create_oval(121, 9, 127, 15, fill="white", outline="#444444", width=1)
+    bot_ball = bg.create_oval(119, 5, 133, 17, fill="#ff3b3b", outline="#444444", width=1)
+    bot_ball_line = bg.create_line(119, 11, 133, 11, fill="#444444", width=1)
+    bot_ball_center = bg.create_oval(123, 8, 129, 14, fill="white", outline="#444444", width=1)
 
-    # ---- Indicador Captu (pokeball + texto em formato pílula) ----
-    # Pílula: retângulo central + semicírculos nas pontas
-    captu_pill_left = bg.create_oval(58, 25, 82, 55, fill="", outline="#ff3b3b", width=2)
-    captu_pill_rect = bg.create_rectangle(70, 25, 130, 55, fill="#0f0f0f", outline="", width=0)
-    captu_pill_right = bg.create_oval(118, 25, 142, 55, fill="", outline="#ff3b3b", width=2)
-    captu_pill_top = bg.create_line(70, 25, 130, 25, fill="#ff3b3b", width=2)
-    captu_pill_bot = bg.create_line(70, 55, 130, 55, fill="#ff3b3b", width=2)
-    # Texto "Captu" dentro da pílula (lado esquerdo)
-    captu_text = bg.create_text(86, 40, text="Captu", fill="#ff3b3b", font=("Consolas", 8, "bold"), anchor="center")
-    # Pokeball dentro da pílula (lado direito, centralizada no semicírculo)
-    captu_ball = bg.create_oval(123, 33, 137, 47, fill="#ff3b3b", outline="#444444", width=1)
-    captu_ball_line = bg.create_line(123, 40, 137, 40, fill="#444444", width=1)
-    captu_center = bg.create_oval(127, 37, 133, 43, fill="white", outline="#444444", width=1)
+    # Pokeball scan indicator (captura habilitado)
+    scan_ball_outer = bg.create_oval(164, 4, 178, 18, fill="#ff3b3b", outline="#333333", width=1)
+    bg.create_line(164, 11, 178, 11, fill="#333333", width=1)
+    scan_ball_center = bg.create_oval(168, 8, 174, 14, fill="white", outline="#333333", width=1)
 
-    # Botão de restaurar (seta elegante)
-    bg.create_rectangle(60, 62, 140, 78, fill="#7c3aed", outline="#9d5cff", width=1)
-    bg.create_text(100, 70, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
+    # Status dot (combo ativo/desativado)
+    status_dot_id = bg.create_oval(184, 4, 198, 18, fill="#ff3b3b", outline="#333333", width=1)
+
+    # ── SEÇÃO CENTRAL: Combo | Captura (estilo React) ──
+    # Fundo da seção central
+    bg.create_rectangle(8, 24, 202, 60, fill="#000000", outline="#1a1a2e", width=1)
+
+    # Separador vertical central
+    bg.create_line(105, 28, 105, 56, fill="#27272a", width=1)
+
+    # ── COMBO (lado esquerdo) ──
+    combo_label = bg.create_text(56, 34, text="Combo",
+                                  fill="#52525b", font=("Consolas", 7, "bold"), anchor="center")
+    combo_status = bg.create_text(56, 48, text="OFF",
+                                   fill="#ff3b3b", font=("Consolas", 10, "bold"), anchor="center")
+
+    # ── CAPTURA (lado direito) ──
+    captu_label = bg.create_text(154, 34, text="Captura",
+                                  fill="#52525b", font=("Consolas", 7, "bold"), anchor="center")
+    captu_status = bg.create_text(154, 48, text="OFF",
+                                   fill="#ff3b3b", font=("Consolas", 10, "bold"), anchor="center")
+
+    # ── BOTÃO ABRIR ──
+    bg.create_rectangle(55, 66, 155, 82, fill="#7c3aed", outline="#9d5cff", width=1)
+    bg.create_text(105, 74, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
 
     # Registra as funções no escopo global
     global update_overlay_status, update_overlay_label, update_overlay_scan, update_overlay_bot
 
     def update_overlay_status():
-        """Atualiza a bolinha de status do overlay."""
+        """Atualiza o overlay do combo: bolinha = modo ligado, texto = execução (H)."""
         try:
-            color = "#00ff88" if combo_active else "#ff3b3b"
-            bg.itemconfig(status_dot_id, fill=color)
+            # Bolinha: segue combo_active (modo ligado/desligado)
+            dot_color = "#00ff88" if combo_active else "#ff3b3b"
+            bg.itemconfig(status_dot_id, fill=dot_color)
+            # Texto ON/OFF: segue combo_running (H pressionado / combo finalizado)
+            if combo_running:
+                bg.itemconfig(combo_status, text="ON", fill="#00ff88")
+                bg.itemconfig(combo_label, fill="#a1a1aa")
+            else:
+                bg.itemconfig(combo_status, text="OFF", fill="#ff3b3b")
+                bg.itemconfig(combo_label, fill="#52525b")
         except Exception:
             pass
 
     def update_overlay_scan():
-        """Atualiza a pokeball do scan no overlay e o indicador Captu."""
+        """Atualiza o overlay da captura: bolinha = modo ligado, texto = execução (G)."""
         try:
-            # Pokeball pequena: segue captura_scan_habilitado (master switch)
+            # Bolinha: segue captura_scan_habilitado (modo ligado/desligado)
             hab_color = "#00ff88" if captura_scan_habilitado else "#ff3b3b"
             bg.itemconfig(scan_ball_outer, fill=hab_color)
-            # Pílula Captu: segue captura_modo_ativo (G ligado/desligado)
-            captu_color = "#00ff88" if captura_modo_ativo else "#ff3b3b"
-            bg.itemconfig(captu_pill_left, outline=captu_color)
-            bg.itemconfig(captu_pill_right, outline=captu_color)
-            bg.itemconfig(captu_pill_top, fill=captu_color)
-            bg.itemconfig(captu_pill_bot, fill=captu_color)
-            bg.itemconfig(captu_ball, fill=captu_color)
-            bg.itemconfig(captu_text, fill=captu_color)
+            # Texto ON/OFF: segue captura_modo_ativo (G ligado/desligado)
+            if captura_modo_ativo:
+                bg.itemconfig(captu_status, text="ON", fill="#00ff88")
+                bg.itemconfig(captu_label, fill="#a1a1aa")
+            else:
+                bg.itemconfig(captu_status, text="OFF", fill="#ff3b3b")
+                bg.itemconfig(captu_label, fill="#52525b")
         except Exception:
             pass
 
@@ -4154,18 +4169,18 @@ def main():
                 bg.itemconfig(bot_text, text="ON", fill=color)
                 bg.itemconfig(bot_ball, fill=color)
                 # Pokeball desliza para a direita
-                bg.coords(bot_ball, 143, 6, 155, 18)
-                bg.coords(bot_ball_line, 143, 12, 155, 12)
-                bg.coords(bot_ball_center, 146, 9, 152, 15)
+                bg.coords(bot_ball, 145, 5, 157, 17)
+                bg.coords(bot_ball_line, 145, 11, 157, 11)
+                bg.coords(bot_ball_center, 148, 8, 154, 14)
             else:
                 color = "#ff3b3b"
                 bg.itemconfig(bot_track, outline=color)
                 bg.itemconfig(bot_text, text="  OFF", fill=color)
                 bg.itemconfig(bot_ball, fill=color)
                 # Pokeball na esquerda
-                bg.coords(bot_ball, 117, 6, 131, 18)
-                bg.coords(bot_ball_line, 117, 12, 131, 12)
-                bg.coords(bot_ball_center, 121, 9, 127, 15)
+                bg.coords(bot_ball, 119, 5, 133, 17)
+                bg.coords(bot_ball_line, 119, 11, 133, 11)
+                bg.coords(bot_ball_center, 123, 8, 129, 14)
         except Exception:
             pass
 
@@ -4178,7 +4193,7 @@ def main():
 
     def on_restore(event=None):
         cx, cy = event.x, event.y
-        if 60 <= cx <= 140 and 62 <= cy <= 78:
+        if 55 <= cx <= 155 and 66 <= cy <= 82:
             restaurar()
 
     bg.bind("<Button-1>", on_restore)
