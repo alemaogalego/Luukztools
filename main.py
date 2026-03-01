@@ -79,6 +79,11 @@ captura_thread = None
 capturando_battle = False
 captura_battle_thread = None
 
+# ---- Região da tela do jogo (para scan de captura otimizado) ----
+game_screen_region = None     # (x1, y1, x2, y2) — só a tela do jogo, sem bordas/mochila
+capturando_game_region = False
+captura_game_region_thread = None
+
 # Variável global para controlar o estado do combo
 running = False
 combo_active = False  # Variável para controlar o estado do botão "Desligado"
@@ -130,6 +135,7 @@ def aplicar_perfil(nome):
     global nightmare_attacks, hunt_attacks, combo_mode_active
     global bot_hotkey
     global battle_check_region
+    global game_screen_region
 
     perfil = perfis.get(nome, {})
     pokestop_key = perfil.get("pokestop_key", "")
@@ -171,6 +177,12 @@ def aplicar_perfil(nome):
         battle_check_region = tuple(saved_battle)
     else:
         battle_check_region = None
+    # Restaura região da tela do jogo
+    saved_game_region = perfil.get("game_screen_region", None)
+    if saved_game_region and len(saved_game_region) == 4:
+        game_screen_region = tuple(saved_game_region)
+    else:
+        game_screen_region = None
     perfil_ativo = nome
     try:
         if update_overlay_label is not None:
@@ -193,7 +205,8 @@ def salvar_perfil_atual(nome):
         "pos_poke": list(combo.pos_poke),
         "pos_center": list(combo.pos_center),
         "bot_hotkey": bot_hotkey,
-        "battle_check_region": list(battle_check_region) if battle_check_region else None
+        "battle_check_region": list(battle_check_region) if battle_check_region else None,
+        "game_screen_region": list(game_screen_region) if game_screen_region else None
     }
     salvar_perfis()
 
@@ -238,12 +251,12 @@ def has_enemies():
             current = cv2.resize(current, (ref_img.shape[1], ref_img.shape[0]))
         # Compara pixel a pixel: conta quantos pixels mudaram significativamente
         diff = cv2.absdiff(current, ref_img)
-        # Pixels com diferença > 25 de intensidade contam como "mudados"
-        changed = np.count_nonzero(diff > 25)
+        # Pixels com diferença > 15 de intensidade contam como "mudados"
+        changed = np.count_nonzero(diff > 15)
         total = diff.size
         change_pct = changed / total if total > 0 else 0
-        print(f"⚔ Battle check: {change_pct:.1%} pixels alterados (≥2% = tem inimigo)")
-        if change_pct < 0.02:
+        print(f"⚔ Battle check: {change_pct:.2%} pixels alterados (≥0.5% = tem inimigo)")
+        if change_pct < 0.005:
             # Quase idêntico ao vazio → SEM inimigos
             return False
         else:
@@ -416,6 +429,46 @@ def _loop_battle_captura():
                 # Auto-desativa após configurar
                 capturando_battle = False
                 print("⚔ Modo captura BATTLE finalizado.")
+
+def _loop_game_region_captura():
+    """Loop que espera teclas: V=top-left, M=bottom-right da tela do jogo."""
+    global capturando_game_region, game_screen_region
+    print("🎮 Modo captura GAME REGION ativado — aperte 'V' no canto superior-esquerdo da tela do jogo, 'M' no canto inferior-direito.")
+    while capturando_game_region:
+        key = keyboard.read_event(suppress=True)
+        if not capturando_game_region:
+            break
+
+        if key.event_type != keyboard.KEY_DOWN:
+            continue
+
+        if key.name == 'v':  # canto superior-esquerdo
+            x, y = py.position()
+            if game_screen_region is None:
+                game_screen_region = (x, y, x + 100, y + 100)
+            else:
+                game_screen_region = (x, y, game_screen_region[2], game_screen_region[3])
+            print(f"🎮 Game CANTO 1 (top-left): ({x}, {y})")
+            print(f"  Agora aperte 'M' no canto inferior-direito da tela do jogo.")
+
+        elif key.name == 'm':  # canto inferior-direito
+            x, y = py.position()
+            if game_screen_region is None:
+                print("⚠ Aperte 'V' primeiro para marcar o canto superior-esquerdo!")
+            else:
+                game_screen_region = (game_screen_region[0], game_screen_region[1], x, y)
+                x1, y1, x2, y2 = game_screen_region
+                w = x2 - x1
+                h = y2 - y1
+                if w <= 0 or h <= 0:
+                    print(f"⚠ Região inválida! w={w}, h={h}. Verifique V e M.")
+                else:
+                    print(f"🎮 Game CANTO 2 (bottom-right): ({x}, {y})")
+                    print(f"  Região do jogo: {game_screen_region} ({w}x{h})")
+                    salvar_perfil_atual(perfil_ativo)
+                    print(f"Game region salvo no perfil '{perfil_ativo}'")
+                capturando_game_region = False
+                print("🎮 Modo captura GAME REGION finalizado.")
 
 def main():
     global button_combo, button_activation, perfil_label, lbl
@@ -961,6 +1014,104 @@ def main():
                 battle_status_lbl.config(fg=_RED)
         battle_status_var.trace_add("write", _update_battle_status_color)
         _update_battle_status_color()
+
+        # ═══ SEÇÃO 4: GAME REGION (região da tela do jogo) ═══
+        _cfg_section_label(content, "🎮  REGIÃO DA TELA DO JOGO", "#00d4ff")
+
+        game_region_card = tk.Frame(content, bg=_CARD, highlightbackground=_BORDER,
+                                     highlightthickness=1)
+        game_region_card.pack(fill="x", pady=(6, 0))
+
+        # Info box game region
+        game_region_info_frame = tk.Frame(game_region_card, bg="#0a0a0c", highlightbackground=_BORDER,
+                                           highlightthickness=1)
+        game_region_info_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        game_region_info_inner = tk.Frame(game_region_info_frame, bg="#0a0a0c")
+        game_region_info_inner.pack(fill="x", padx=8, pady=8)
+        tk.Label(game_region_info_inner, text="🎮", font=("Segoe UI Emoji", 11),
+                 bg="#0a0a0c", fg="#00d4ff").pack(side="left", padx=(0, 8))
+        tk.Label(game_region_info_inner,
+                 text="Região da TELA DO JOGO para scan rápido.\nAperte 'V' no canto top-left e 'M' no\ncanto bottom-right (só a área do jogo).",
+                 font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
+                 justify="left").pack(side="left")
+
+        # Status game region
+        game_region_status_var = tk.StringVar(
+            value="NÃO CONFIGURADO" if game_screen_region is None else "CONFIGURADO ✅"
+        )
+
+        def _start_game_region_captura():
+            global capturando_game_region, captura_game_region_thread
+            if capturando_game_region:
+                return
+            capturando_game_region = True
+            game_region_status_var.set("AGUARDANDO V + M...")
+            captura_game_region_thread = threading.Thread(target=_loop_game_region_wrapper, daemon=True)
+            captura_game_region_thread.start()
+
+        def _loop_game_region_wrapper():
+            _loop_game_region_captura()
+            try:
+                if game_screen_region is not None:
+                    game_region_status_var.set("CONFIGURADO ✅")
+                else:
+                    game_region_status_var.set("NÃO CONFIGURADO")
+            except Exception:
+                pass
+
+        def _stop_game_region_captura():
+            global capturando_game_region
+            if not capturando_game_region:
+                return
+            capturando_game_region = False
+            game_region_status_var.set("CONFIGURADO ✅" if game_screen_region is not None else "NÃO CONFIGURADO")
+            print("🎮 Modo captura GAME REGION desativado.")
+
+        btn_game_region_ativar = tk.Button(
+            game_region_card, text="🎮  ATIVAR CAPTURA (V=TOP-LEFT, M=BOTTOM-RIGHT)",
+            font=("Consolas", 8, "bold"), bg="#27272a", fg="white",
+            activebackground="#00d4ff", activeforeground="black",
+            bd=0, pady=8, cursor="hand2",
+            command=_start_game_region_captura
+        )
+        btn_game_region_ativar.pack(fill="x", padx=10, pady=(8, 4))
+
+        _game_des_frame = tk.Frame(game_region_card, bg="#00d4ff", bd=0, highlightthickness=0)
+        _game_des_frame.pack(fill="x", padx=10, pady=(0, 8))
+        btn_game_region_desativar = tk.Button(
+            _game_des_frame, text="⚡  DESATIVAR CAPTURA GAME REGION",
+            font=("Consolas", 9, "bold"), bg="#0a0a0c", fg="#00d4ff",
+            activebackground="#0a1a2a",
+            bd=0, relief="flat", pady=6, cursor="hand2",
+            highlightthickness=0,
+            command=_stop_game_region_captura
+        )
+        btn_game_region_desativar.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Status label game region
+        game_sf = tk.Frame(game_region_card, bg=_CARD)
+        game_sf.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Frame(game_sf, bg=_BORDER, height=1).pack(fill="x", pady=(0, 6))
+        gsf = tk.Frame(game_sf, bg=_CARD)
+        gsf.pack()
+        tk.Label(gsf, text="STATUS:", font=("Consolas", 8),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 6))
+        game_region_status_lbl = tk.Label(gsf, textvariable=game_region_status_var,
+                                           font=("Consolas", 10, "bold italic"),
+                                           bg=_CARD, fg="#00d4ff")
+        game_region_status_lbl.pack(side="left")
+
+        def _update_game_region_status_color(*_):
+            val = game_region_status_var.get()
+            if "CONFIGURADO" in val and "NÃO" not in val:
+                game_region_status_lbl.config(fg=_GREEN)
+            elif "AGUARDANDO" in val:
+                game_region_status_lbl.config(fg="#00d4ff")
+            else:
+                game_region_status_lbl.config(fg=_RED)
+        game_region_status_var.trace_add("write", _update_game_region_status_color)
+        _update_game_region_status_color()
 
         # ── FOOTER: SALVAR + RESET ──
         tk.Frame(config_content_frame, bg=_BORDER, height=1).pack(fill="x", padx=16, pady=(8, 0))
@@ -2318,7 +2469,16 @@ def main():
 
         try:
             with mss.mss() as sct:
-                monitor = sct.monitors[1]
+                # Usa game_screen_region se configurado, senão monitor inteiro
+                if game_screen_region is not None:
+                    gx1, gy1, gx2, gy2 = game_screen_region
+                    monitor = {"left": gx1, "top": gy1, "width": gx2 - gx1, "height": gy2 - gy1}
+                    offset_x, offset_y = gx1, gy1
+                    print(f"🎮 Scan na região do jogo: {game_screen_region}")
+                else:
+                    monitor = sct.monitors[1]
+                    offset_x, offset_y = 0, 0
+                    print("⚠ Game region não configurado — escaneando monitor inteiro.")
                 while captura_modo_ativo:
                     # MSS DXGI: captura BGRA direto da GPU
                     try:
@@ -2345,10 +2505,12 @@ def main():
                         _, max_val, _, max_loc = cv2.minMaxLoc(res)
                         if max_val >= 0.84:
                             h, w = ref_gray.shape
-                            cx = max_loc[0] + w // 2
-                            cy = max_loc[1] + h // 2
+                            cx = offset_x + max_loc[0] + w // 2
+                            cy = offset_y + max_loc[1] + h // 2
                             ctypes.windll.user32.SetCursorPos(cx, cy)
                             keyboard.press_and_release('t')
+                            time.sleep(0.05)
+                            _win_click(cx, cy)
                             print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
                             encontrou = True
                             time.sleep(0.6)
@@ -2363,10 +2525,12 @@ def main():
                             _, max_val, _, max_loc = cv2.minMaxLoc(res)
                             if max_val >= 0.94:
                                 h, w = ref_bgr.shape[:2]
-                                cx = max_loc[0] + w // 2
-                                cy = max_loc[1] + h // 2
+                                cx = offset_x + max_loc[0] + w // 2
+                                cy = offset_y + max_loc[1] + h // 2
                                 ctypes.windll.user32.SetCursorPos(cx, cy)
                                 keyboard.press_and_release('t')
+                                time.sleep(0.05)
+                                _win_click(cx, cy)
                                 print(f"✨ SHINY {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
                                 encontrou = True
                                 time.sleep(0.6)
