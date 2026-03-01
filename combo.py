@@ -113,15 +113,21 @@ def revive(revive_key):
     return True
 
 
-def combo_hunt_dynamic(attacks):
+def combo_hunt_dynamic(attacks, should_continue=None):
     """
     Executa combo Hunt Normal com lista dinâmica de ações.
     attacks: lista de dicts [{"key": "q", "delay": 0.5, "type": "atk"}, ...]
     - type "atk": pressiona key + delay
     - type "revive": executa rotina completa de revive (right-click, key, right-click, e, move)
     - type "medicine"/"pokestop": pressiona key + delay
+    should_continue: callback que retorna True se deve continuar, False para interromper
     """
     for atk in attacks:
+        # Verifica se ainda tem inimigo antes de cada ação
+        if should_continue is not None and not should_continue():
+            print("⚠ Inimigo morreu! Combo interrompido.")
+            return False
+
         key = atk.get("key", "")
         delay = atk.get("delay", 0.5)
         tipo = atk.get("type", "atk")
@@ -139,7 +145,7 @@ def combo_hunt_dynamic(attacks):
     return True
 
 
-def combo_nightmare(nightmare_attacks):
+def combo_nightmare(nightmare_attacks, should_continue=None):
     """
     Executa combo no modo Nightmare.
     nightmare_attacks: lista de dicts [{"key1": "alt", "key2": "1", "delay": 0.5, "type": "pokeball"}, ...]
@@ -147,8 +153,14 @@ def combo_nightmare(nightmare_attacks):
     - type "attack": pressiona key1 sozinha (ataque normal)
     - type "revive": executa rotina completa de revive
     - type "medicine"/"pokestop": pressiona key + delay
+    should_continue: callback que retorna True se deve continuar, False para interromper
     """
     for atk in nightmare_attacks:
+        # Verifica se ainda tem inimigo antes de cada ação
+        if should_continue is not None and not should_continue():
+            print("⚠ Inimigo morreu! Combo interrompido.")
+            return False
+
         key1 = atk.get("key1", "")
         key2 = atk.get("key2", "")
         delay = atk.get("delay", 0.5)

@@ -14,11 +14,6 @@
         "type": "pokestop"
       },
       {
-        "key": "f",
-        "delay": 0.5,
-        "type": "medicine"
-      },
-      {
         "key": "q",
         "delay": 0.5,
         "type": "atk"
@@ -41,6 +36,69 @@
       {
         "key": "5",
         "delay": 1.2,
+        "type": "atk"
+      },
+      {
+        "key": "r",
+        "delay": 1.2,
+        "type": "revive"
+      }
+    ],
+    "nightmare_attacks": [],
+    "combo_mode_active": "HUNT NORMAL",
+    "pos_poke": [
+      28,
+      54
+    ],
+    "pos_center": [
+      950,
+      307
+    ],
+    "bot_hotkey": "INSERT",
+    "battle_check_region": [
+      4,
+      383,
+      200,
+      585
+    ]
+  },
+  "HUNTBOSS": {
+    "pokestop_key": "tab",
+    "pokemedi_key": "f",
+    "revive_key": "r",
+    "revive_delay": 1.2,
+    "pokestop_delay": 0.5,
+    "pokemedi_delay": 0.5,
+    "combo_start_key": "h",
+    "hunt_attacks": [
+      {
+        "key": "tab",
+        "delay": 0.5,
+        "type": "pokestop"
+      },
+      {
+        "key": "Q",
+        "delay": 0.5,
+        "type": "atk"
+      },
+      {
+        "key": "2",
+        "delay": 0.6,
+        "type": "atk"
+      },
+      {
+        "key": "3",
+        "delay": 0.8,
+        "type": "atk"
+      },
+      {
+        "key": "4",
+        "delay": 0.8,
+        "type": "atk"
+      },
+      {
+        "key": "5",
+        "delay": 0.8,
         "type": "atk"
       },
       {

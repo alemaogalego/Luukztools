@@ -57,6 +57,12 @@ nightmare_attacks = []
 # Modo de combo ativo: "HUNT NORMAL" ou "NIGHTMARE"
 combo_mode_active = "HUNT NORMAL"
 
+# ---- Verificação de Batalha (battle check) ----
+# Região da tela onde fica o painel de batalha: (x1, y1, x2, y2)
+battle_check_region = None     # None = não configurado
+BATTLE_REF_FILE = os.path.join("battle", "battle_empty_ref.png")  # imagem de referência "sem inimigos"
+battle_check_enabled = True    # liga/desliga a verificação
+
 # ---- Sistema de Captura (gavetas) ----
 # Lista de gavetas: [{"nome": "Pikachu", "ativo": False}, ...]
 captura_gavetas = []
@@ -68,6 +74,10 @@ CAPTURA_DIR = "captura"
 # ---- captura da posição (modo configuração) ----
 capturando = False
 captura_thread = None
+
+# ---- captura battle region (modo configuração separado) ----
+capturando_battle = False
+captura_battle_thread = None
 
 # Variável global para controlar o estado do combo
 running = False
@@ -119,6 +129,7 @@ def aplicar_perfil(nome):
     global pokeattack_delay6, pokeattack_delay7, pokeattack_delay8, pokeattack_delay9, pokeattack_delay10, pokeattack_delay11, pokeattack_delay12, combo_start_key, lbl
     global nightmare_attacks, hunt_attacks, combo_mode_active
     global bot_hotkey
+    global battle_check_region
 
     perfil = perfis.get(nome, {})
     pokestop_key = perfil.get("pokestop_key", "")
@@ -154,6 +165,12 @@ def aplicar_perfil(nome):
     saved_center = perfil.get("pos_center", None)
     if saved_center:
         combo.set_center(saved_center[0], saved_center[1])
+    # Restaura região de battle check
+    saved_battle = perfil.get("battle_check_region", None)
+    if saved_battle and len(saved_battle) == 4:
+        battle_check_region = tuple(saved_battle)
+    else:
+        battle_check_region = None
     perfil_ativo = nome
     try:
         if update_overlay_label is not None:
@@ -175,7 +192,8 @@ def salvar_perfil_atual(nome):
         "combo_mode_active": combo_mode_active,
         "pos_poke": list(combo.pos_poke),
         "pos_center": list(combo.pos_center),
-        "bot_hotkey": bot_hotkey
+        "bot_hotkey": bot_hotkey,
+        "battle_check_region": list(battle_check_region) if battle_check_region else None
     }
     salvar_perfis()
 
@@ -186,18 +204,71 @@ def excluir_perfil(nome):
 
 combo_start_key = ""  # Defina a tecla padrão ou carregue do perfil
 
+def has_enemies():
+    """
+    Verifica se há inimigos na tela comparando a região de batalha
+    com a referência de 'sem inimigos'.
+    Retorna True se há inimigos, False se não há.
+    Se battle check não configurado, retorna True (assume que tem).
+    """
+    global battle_check_region
+    if not battle_check_enabled:
+        return True  # check desabilitado, assume que tem inimigo
+    if battle_check_region is None:
+        print("⚠ Battle check NÃO configurado! Vá em Ajustes → Ativar Captura → B + N")
+        return True  # não configurado, assume que tem
+    ref_path = resource_path(BATTLE_REF_FILE)
+    if not os.path.exists(ref_path):
+        print(f"⚠ Imagem de referência não encontrada: {ref_path}")
+        return True  # sem referência, assume que tem
+
+    try:
+        ref_img = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)
+        if ref_img is None:
+            print("⚠ Não conseguiu ler imagem de referência!")
+            return True
+        x1, y1, x2, y2 = battle_check_region
+        with mss.mss() as sct:
+            monitor = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
+            raw = sct.grab(monitor)
+            frame = np.array(raw)  # BGRA numpy array
+            current = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+        # Redimensiona se tamanhos divergem
+        if current.shape != ref_img.shape:
+            current = cv2.resize(current, (ref_img.shape[1], ref_img.shape[0]))
+        # Compara pixel a pixel: conta quantos pixels mudaram significativamente
+        diff = cv2.absdiff(current, ref_img)
+        # Pixels com diferença > 25 de intensidade contam como "mudados"
+        changed = np.count_nonzero(diff > 25)
+        total = diff.size
+        change_pct = changed / total if total > 0 else 0
+        print(f"⚔ Battle check: {change_pct:.1%} pixels alterados (≥2% = tem inimigo)")
+        if change_pct < 0.02:
+            # Quase idêntico ao vazio → SEM inimigos
+            return False
+        else:
+            # Diferença significativa → TEM inimigos
+            return True
+    except Exception as e:
+        print(f"⚠ Erro battle check: {e}")
+        return True  # em caso de erro, assume que tem
+
 def start_combo():
     if not bot_active:
         print("⚠ Bot desligado! Combo não executa.")
         return
     if combo_active:
+        # Verifica se tem inimigos antes de combar
+        enemies = has_enemies()
+        if not enemies:
+            print("🚫 Nenhum pokémon à vista! Combo cancelado.")
+            return
+        print("⚔ Inimigos detectados! Executando combo...")
         if combo_mode_active == "NIGHTMARE":
-            # Nightmare: tudo na sequência (pokestop, medicine, revive, ataques)
-            combo.combo_nightmare(nightmare_attacks)
+            combo.combo_nightmare(nightmare_attacks, should_continue=has_enemies)
             print("Combo Nightmare executado!")
         else:
-            # Hunt Normal: tudo na sequência (pokestop, medicine, revive, ataques)
-            combo.combo_hunt_dynamic(hunt_attacks)
+            combo.combo_hunt_dynamic(hunt_attacks, should_continue=has_enemies)
             print("Combo Hunt Normal executado!")
     else:
         print("Combo está desligado, não executa!")
@@ -257,7 +328,7 @@ def toggle_activation():
         except: pass
 
 def _loop_captura():
-    """Loop que espera a tecla 'h' e grava pyautogui.position() em combo.set_pos_poke."""
+    """Loop que espera teclas de configuração: H=poke, J=center."""
     global capturando
     while capturando:
         key = keyboard.read_event(suppress=True)
@@ -283,6 +354,60 @@ def _loop_captura():
             # Salva no perfil automaticamente
             salvar_perfil_atual(perfil_ativo)
             print(f"pos_center salvo no perfil '{perfil_ativo}'")
+
+def _loop_battle_captura():
+    """Loop que espera teclas de configuração: B=top-left, N=bottom-right do painel Batalha."""
+    global capturando_battle, battle_check_region
+    print("⚔ Modo captura BATTLE ativado — aperte 'B' no canto superior-esquerdo, 'N' no canto inferior-direito.")
+    while capturando_battle:
+        key = keyboard.read_event(suppress=True)
+        if not capturando_battle:
+            break
+
+        if key.event_type != keyboard.KEY_DOWN:
+            continue
+
+        if key.name == 'b':  # salvar canto superior-esquerdo da região de batalha
+            x, y = py.position()
+            if battle_check_region is None:
+                battle_check_region = (x, y, x + 100, y + 100)
+            else:
+                battle_check_region = (x, y, battle_check_region[2], battle_check_region[3])
+            print(f"⚔ Battle CANTO 1 (top-left): ({x}, {y})")
+            print(f"  Agora aperte 'N' no canto inferior-direito da janela Batalha.")
+
+        elif key.name == 'n':  # salvar canto inferior-direito + capturar referência
+            x, y = py.position()
+            if battle_check_region is None:
+                print("⚠ Aperte 'B' primeiro para marcar o canto superior-esquerdo!")
+            else:
+                battle_check_region = (battle_check_region[0], battle_check_region[1], x, y)
+                print(f"⚔ Battle CANTO 2 (bottom-right): ({x}, {y})")
+                print(f"  Região: {battle_check_region}")
+                # Captura referência de "sem inimigos" agora
+                try:
+                    x1, y1, x2, y2 = battle_check_region
+                    w = x2 - x1
+                    h = y2 - y1
+                    if w <= 0 or h <= 0:
+                        print(f"⚠ Região inválida! w={w}, h={h}. Verifique B e N.")
+                    else:
+                        with mss.mss() as sct:
+                            monitor = {"left": x1, "top": y1, "width": w, "height": h}
+                            raw = sct.grab(monitor)
+                            frame = np.array(raw)
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                        ref_path = resource_path(BATTLE_REF_FILE)
+                        os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+                        cv2.imwrite(ref_path, gray)
+                        print(f"📸 Referência 'sem inimigos' salva: {ref_path} ({w}x{h})")
+                except Exception as e:
+                    print(f"⚠ Erro ao capturar referência: {e}")
+                salvar_perfil_atual(perfil_ativo)
+                print(f"Battle check salvo no perfil '{perfil_ativo}'")
+                # Auto-desativa após configurar
+                capturando_battle = False
+                print("⚔ Modo captura BATTLE finalizado.")
 
 def main():
     global button_combo, button_activation, perfil_label, lbl
@@ -589,8 +714,28 @@ def main():
         tk.Frame(config_content_frame, bg=_BORDER, height=1).pack(fill="x", padx=16, pady=(10, 0))
 
         # ── SCROLL AREA ──
-        content = tk.Frame(config_content_frame, bg=_BG)
-        content.pack(fill="both", expand=True, padx=16, pady=(10, 0))
+        _cfg_scroll_outer = tk.Frame(config_content_frame, bg=_BG)
+        _cfg_scroll_outer.pack(fill="both", expand=True)
+
+        _cfg_canvas = tk.Canvas(_cfg_scroll_outer, bg=_BG, highlightthickness=0)
+        _cfg_scrollbar = tk.Scrollbar(_cfg_scroll_outer, orient="vertical", command=_cfg_canvas.yview)
+        content = tk.Frame(_cfg_canvas, bg=_BG)
+
+        content.bind("<Configure>",
+                      lambda e: _cfg_canvas.configure(scrollregion=_cfg_canvas.bbox("all")))
+        _cfg_canvas.create_window((0, 0), window=content, anchor="nw")
+        _cfg_canvas.configure(yscrollcommand=_cfg_scrollbar.set)
+
+        _cfg_canvas.pack(side="left", fill="both", expand=True)
+        _cfg_scrollbar.pack(side="right", fill="y")
+
+        def _cfg_resize(event):
+            _cfg_canvas.itemconfig(_cfg_canvas.find_all()[0], width=event.width)
+        _cfg_canvas.bind("<Configure>", _cfg_resize)
+
+        def _cfg_mousewheel(event):
+            _cfg_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        _cfg_canvas.bind_all("<MouseWheel>", _cfg_mousewheel)
 
         # ═══ SEÇÃO 1: HOTKEY GLOBAL ═══
         _cfg_section_label(content, "⌨  HOTKEY GLOBAL", _YELLOW)
@@ -709,6 +854,105 @@ def main():
             val = status_var.get()
             status_lbl.config(fg=_RED if val == "DESATIVADO" else _GREEN)
         status_var.trace_add("write", _update_status_color)
+
+        # ═══ SEÇÃO 3: CONFIGURAÇÃO BATTLE ═══
+        _ORANGE = "#f97316"
+        _cfg_section_label(content, "⚔  CONFIGURAÇÃO BATTLE", _ORANGE)
+
+        battle_card = tk.Frame(content, bg=_CARD, highlightbackground=_BORDER,
+                               highlightthickness=1)
+        battle_card.pack(fill="x", pady=(6, 0))
+
+        # Info box battle
+        battle_info_frame = tk.Frame(battle_card, bg="#0a0a0c", highlightbackground=_BORDER,
+                                     highlightthickness=1)
+        battle_info_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        battle_info_inner = tk.Frame(battle_info_frame, bg="#0a0a0c")
+        battle_info_inner.pack(fill="x", padx=8, pady=8)
+        tk.Label(battle_info_inner, text="⚔", font=("Segoe UI Emoji", 11),
+                 bg="#0a0a0c", fg=_ORANGE).pack(side="left", padx=(0, 8))
+        tk.Label(battle_info_inner,
+                 text="SEM inimigos na tela, clique ATIVAR.\nAperte 'B' no canto top-left do painel\nBatalha e 'N' no canto bottom-right.",
+                 font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
+                 justify="left").pack(side="left")
+
+        # Status battle
+        battle_status_var = tk.StringVar(value="NÃO CONFIGURADO" if battle_check_region is None else "CONFIGURADO ✅")
+        _config_widgets["battle_status_var"] = battle_status_var
+
+        def _start_battle_captura():
+            global capturando_battle, captura_battle_thread
+            if capturando_battle:
+                return
+            capturando_battle = True
+            battle_status_var.set("AGUARDANDO B + N...")
+            captura_battle_thread = threading.Thread(target=_loop_battle_captura_wrapper, daemon=True)
+            captura_battle_thread.start()
+
+        def _loop_battle_captura_wrapper():
+            """Wrapper que chama o loop e atualiza status ao terminar."""
+            _loop_battle_captura()
+            try:
+                if battle_check_region is not None:
+                    battle_status_var.set("CONFIGURADO ✅")
+                else:
+                    battle_status_var.set("NÃO CONFIGURADO")
+            except Exception:
+                pass
+
+        def _stop_battle_captura():
+            global capturando_battle
+            if not capturando_battle:
+                return
+            capturando_battle = False
+            battle_status_var.set("CONFIGURADO ✅" if battle_check_region is not None else "NÃO CONFIGURADO")
+            print("⚔ Modo captura BATTLE desativado.")
+
+        btn_battle_ativar = tk.Button(
+            battle_card, text="⚔  ATIVAR CAPTURA (B=TOP-LEFT, N=BOTTOM-RIGHT)",
+            font=("Consolas", 8, "bold"), bg="#27272a", fg="white",
+            activebackground=_ORANGE, activeforeground="black",
+            bd=0, pady=8, cursor="hand2",
+            command=_start_battle_captura
+        )
+        btn_battle_ativar.pack(fill="x", padx=10, pady=(8, 4))
+
+        _battle_des_frame = tk.Frame(battle_card, bg=_ORANGE, bd=0, highlightthickness=0)
+        _battle_des_frame.pack(fill="x", padx=10, pady=(0, 8))
+        btn_battle_desativar = tk.Button(
+            _battle_des_frame, text="⚡  DESATIVAR CAPTURA BATTLE",
+            font=("Consolas", 9, "bold"), bg="#0a0a0c", fg=_ORANGE,
+            activebackground="#1a0a05",
+            bd=0, relief="flat", pady=6, cursor="hand2",
+            highlightthickness=0,
+            command=_stop_battle_captura
+        )
+        btn_battle_desativar.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Status label battle
+        battle_sf = tk.Frame(battle_card, bg=_CARD)
+        battle_sf.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Frame(battle_sf, bg=_BORDER, height=1).pack(fill="x", pady=(0, 6))
+        bsf = tk.Frame(battle_sf, bg=_CARD)
+        bsf.pack()
+        tk.Label(bsf, text="STATUS:", font=("Consolas", 8),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 6))
+        battle_status_lbl = tk.Label(bsf, textvariable=battle_status_var,
+                                     font=("Consolas", 10, "bold italic"),
+                                     bg=_CARD, fg=_ORANGE)
+        battle_status_lbl.pack(side="left")
+
+        def _update_battle_status_color(*_):
+            val = battle_status_var.get()
+            if "CONFIGURADO" in val and "NÃO" not in val:
+                battle_status_lbl.config(fg=_GREEN)
+            elif "AGUARDANDO" in val:
+                battle_status_lbl.config(fg=_ORANGE)
+            else:
+                battle_status_lbl.config(fg=_RED)
+        battle_status_var.trace_add("write", _update_battle_status_color)
+        _update_battle_status_color()
 
         # ── FOOTER: SALVAR + RESET ──
         tk.Frame(config_content_frame, bg=_BORDER, height=1).pack(fill="x", padx=16, pady=(8, 0))
@@ -1630,6 +1874,22 @@ def main():
         entry_nome.pack(padx=12, pady=(0, 6))
         entry_nome.focus_set()
 
+        # ── Checkbox SHINY ──
+        _YELLOW = "#eab308"
+        shiny_var = tk.BooleanVar(value=False)
+        shiny_frame = tk.Frame(popup_frame, bg=_CARD)
+        shiny_frame.pack(padx=12, pady=(2, 6))
+        chk_shiny = tk.Checkbutton(
+            shiny_frame, text="✨ SHINY", variable=shiny_var,
+            font=("Consolas", 9, "bold"),
+            bg=_CARD, fg=_YELLOW, selectcolor="#18181b",
+            activebackground=_CARD, activeforeground=_YELLOW,
+            cursor="hand2"
+        )
+        chk_shiny.pack(side="left")
+        tk.Label(shiny_frame, text="(cor + 94%)",
+                 font=("Consolas", 7), bg=_CARD, fg="#71717a").pack(side="left", padx=(4, 0))
+
         btn_row = tk.Frame(popup_frame, bg=_CARD)
         btn_row.pack(fill="x", padx=12, pady=(0, 10))
 
@@ -1639,7 +1899,7 @@ def main():
                 return
             # Cria pasta
             os.makedirs(os.path.join(CAPTURA_DIR, nome), exist_ok=True)
-            gaveta_data = {"nome": nome, "ativo": False}
+            gaveta_data = {"nome": nome, "ativo": False, "shiny": shiny_var.get()}
             # Verifica duplicata
             if not any(g["nome"] == nome for g in captura_gavetas):
                 captura_gavetas.append(gaveta_data)
@@ -1706,6 +1966,7 @@ def main():
 
             # LED de status (clicável — toggle ativo/inativo)
             is_ativo = gaveta.get("ativo", False)
+            is_shiny = gaveta.get("shiny", False)
             led_color = "#00ff88" if is_ativo else "#ef4444"
             led = tk.Label(card_header, text="●", font=("Consolas", 10),
                            bg=_CARD, fg=led_color, cursor="hand2")
@@ -1726,14 +1987,29 @@ def main():
             # Nome + contagem (stacked vertically like React design)
             info_frame = tk.Frame(card_header, bg=_CARD)
             info_frame.pack(side="left", fill="x", expand=True)
-            lbl_nome = tk.Label(info_frame, text=nome.upper(),
+            # Nome + badge shiny
+            nome_row = tk.Frame(info_frame, bg=_CARD)
+            nome_row.pack(anchor="w")
+            lbl_nome = tk.Label(nome_row, text=nome.upper(),
                                 font=("Consolas", 10, "bold"),
                                 bg=_CARD, fg="#a1a1aa")
-            lbl_nome.pack(anchor="w")
+            lbl_nome.pack(side="left")
+            if is_shiny:
+                tk.Label(nome_row, text=" ✨ SHINY",
+                         font=("Consolas", 7, "bold"),
+                         bg=_CARD, fg="#eab308").pack(side="left", padx=(4, 0))
+
             lbl_count = tk.Label(info_frame, text=f"{n_imgs} IMAGENS DETECTADAS",
                                  font=("Consolas", 7),
                                  bg=_CARD, fg="#52525b")
             lbl_count.pack(anchor="w")
+
+            # ── Toggle Shiny checkbox no card ──
+            def _toggle_shiny(event=None, _gaveta=gaveta):
+                _gaveta["shiny"] = not _gaveta.get("shiny", False)
+                state = "SHINY" if _gaveta["shiny"] else "NORMAL"
+                print(f"✨ Gaveta '{_gaveta['nome']}' → {state}")
+                _refresh_capture_drawers()
 
             # Chevron
             chevron = tk.Label(card_header, text="❯", font=("Consolas", 10),
@@ -1755,6 +2031,21 @@ def main():
                 bd=1, relief="solid", padx=8, pady=6, cursor="hand2"
             )
             btn_capturar.pack(side="left", expand=True, fill="x", padx=(0, 4))
+
+            # Botão toggle shiny
+            shiny_state = gaveta.get("shiny", False)
+            shiny_text = "✨ SHINY: ON" if shiny_state else "✨ SHINY: OFF"
+            shiny_fg = "#eab308" if shiny_state else _DIM
+            shiny_bg = "#1c1a0e" if shiny_state else "#1c1c1e"
+            btn_shiny = tk.Button(
+                action_row, text=shiny_text,
+                font=("Consolas", 8, "bold"),
+                bg=shiny_bg, fg=shiny_fg,
+                activebackground="#a16207", activeforeground="white",
+                bd=1, relief="solid", padx=8, pady=6, cursor="hand2",
+                command=_toggle_shiny
+            )
+            btn_shiny.pack(side="left", expand=True, fill="x", padx=(0, 4))
 
             btn_excluir = tk.Button(
                 action_row, text="🗑 EXCLUIR",
@@ -1853,7 +2144,7 @@ def main():
                     w["populate"]()
 
             # Bind click em header inteiro (exceto LED que tem toggle próprio)
-            for widget in [card_header, info_frame, lbl_nome, lbl_count, chevron]:
+            for widget in [card_header, info_frame, nome_row, lbl_nome, lbl_count, chevron]:
                 widget.bind("<Button-1>", lambda e, fn=_toggle_expand: fn())
                 widget.config(cursor="hand2")
 
@@ -1982,28 +2273,37 @@ def main():
         - BGRA→Gray direto (1 conversão, pula RGB)
         - ctypes Win32 mouse (bypassa pyautogui)
         - Idle: 0.05s | Pós-ball: 0.6s
+        - SHINY: usa matching por COR (BGR) com precisão 94%+
         """
         global captura_modo_ativo
         print("🟢 Scan MAX SPEED (MSS+DXGI+ctypes)")
 
-        # Pré-carrega refs em GRAYSCALE, lista plana
-        ref_list = []
+        # Pré-carrega refs — GRAY para normal, COLOR (BGR) para shiny
+        ref_list_normal = []   # (nome, arq, img_gray)
+        ref_list_shiny = []    # (nome, arq, img_bgr)
         for gaveta in list(captura_gavetas):
             if not gaveta.get("ativo", False):
                 continue
             nome = gaveta["nome"]
+            is_shiny = gaveta.get("shiny", False)
             pasta = os.path.join(CAPTURA_DIR, nome)
             if not os.path.isdir(pasta):
                 continue
             for f in sorted(os.listdir(pasta)):
                 if f.endswith(".png"):
                     caminho = os.path.join(pasta, f)
-                    img = cv2.imread(caminho, cv2.IMREAD_GRAYSCALE)
-                    if img is not None:
-                        ref_list.append((nome, f, img))
-        print(f"📦 {len(ref_list)} refs (gray flat-cache)")
+                    if is_shiny:
+                        img = cv2.imread(caminho, cv2.IMREAD_COLOR)
+                        if img is not None:
+                            ref_list_shiny.append((nome, f, img))
+                    else:
+                        img = cv2.imread(caminho, cv2.IMREAD_GRAYSCALE)
+                        if img is not None:
+                            ref_list_normal.append((nome, f, img))
+        total = len(ref_list_normal) + len(ref_list_shiny)
+        print(f"📦 {total} refs ({len(ref_list_normal)} normal gray, {len(ref_list_shiny)} shiny color)")
 
-        if not ref_list:
+        if total == 0:
             print("⚠ Nenhuma ref encontrada!")
             captura_modo_ativo = False
             return
@@ -2016,12 +2316,21 @@ def main():
                     try:
                         raw = sct.grab(monitor)
                         frame = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(raw.height, raw.width, 4)
-                        screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
                     except Exception:
                         continue
 
+                    # Converte conforme necessário (lazy: só converte se tem refs)
+                    screen_gray = None
+                    screen_bgr = None
+                    if ref_list_normal:
+                        screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                    if ref_list_shiny:
+                        screen_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
                     encontrou = False
-                    for nome, arq, ref_gray in ref_list:
+
+                    # --- Scan NORMAL (grayscale, threshold 0.84) ---
+                    for nome, arq, ref_gray in ref_list_normal:
                         if not captura_modo_ativo:
                             break
                         res = cv2.matchTemplate(screen_gray, ref_gray, cv2.TM_CCOEFF_NORMED)
@@ -2030,15 +2339,30 @@ def main():
                             h, w = ref_gray.shape
                             cx = max_loc[0] + w // 2
                             cy = max_loc[1] + h // 2
-                            # Move mouse SEM clicar → T → 1 click só
                             ctypes.windll.user32.SetCursorPos(cx, cy)
                             keyboard.press_and_release('t')
-                            time.sleep(0.015)
-                            _win_click(cx, cy)
                             print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
                             encontrou = True
                             time.sleep(0.6)
                             break
+
+                    # --- Scan SHINY (color BGR, threshold 0.94) ---
+                    if not encontrou:
+                        for nome, arq, ref_bgr in ref_list_shiny:
+                            if not captura_modo_ativo:
+                                break
+                            res = cv2.matchTemplate(screen_bgr, ref_bgr, cv2.TM_CCOEFF_NORMED)
+                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                            if max_val >= 0.94:
+                                h, w = ref_bgr.shape[:2]
+                                cx = max_loc[0] + w // 2
+                                cy = max_loc[1] + h // 2
+                                ctypes.windll.user32.SetCursorPos(cx, cy)
+                                keyboard.press_and_release('t')
+                                print(f"✨ SHINY {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
+                                encontrou = True
+                                time.sleep(0.6)
+                                break
 
                     if not encontrou:
                         time.sleep(0.01)
@@ -2301,7 +2625,7 @@ def main():
                     return
                 # Cria pasta
                 os.makedirs(os.path.join(CAPTURA_DIR, nome), exist_ok=True)
-                gaveta_data = {"nome": nome, "ativo": False}
+                gaveta_data = {"nome": nome, "ativo": False, "shiny": False}
                 captura_gavetas.append(gaveta_data)
                 criar_gaveta_widget(gaveta_data)
                 print(f"📂 Gaveta '{nome}' criada.")
