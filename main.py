@@ -265,11 +265,19 @@ def start_combo():
             return
         print("⚔ Inimigos detectados! Executando combo...")
         if combo_mode_active == "NIGHTMARE":
-            combo.combo_nightmare(nightmare_attacks, should_continue=has_enemies)
+            result = combo.combo_nightmare(nightmare_attacks, should_continue=has_enemies)
             print("Combo Nightmare executado!")
         else:
-            combo.combo_hunt_dynamic(hunt_attacks, should_continue=has_enemies)
+            result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=has_enemies)
             print("Combo Hunt Normal executado!")
+        # Se o combo parou porque os inimigos morreram → usar revive automaticamente
+        if result is False and revive_key:
+            print("💀 Inimigos eliminados! Usando revive automaticamente...")
+            time.sleep(float(revive_delay) if revive_delay else 0.5)
+            combo.revive(revive_key)
+            print("✅ Revive usado com sucesso!")
+        elif result is False and not revive_key:
+            print("💀 Inimigos eliminados! Revive não configurado (sem tecla).")
     else:
         print("Combo está desligado, não executa!")
 
