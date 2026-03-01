@@ -871,7 +871,10 @@ def main():
                  font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
                  justify="left").pack(side="left")
 
-        status_var = tk.StringVar(value="DESATIVADO")
+        # Verifica se pos_poke/pos_center já foram configurados no perfil
+        _perfil_data = perfis.get(perfil_ativo, {})
+        _has_pos = _perfil_data.get("pos_poke", None) is not None
+        status_var = tk.StringVar(value="CONFIGURADO ✅" if _has_pos else "NÃO CONFIGURADO")
         _config_widgets["status_var"] = status_var
 
         def _start_captura_cfg():
@@ -885,7 +888,11 @@ def main():
             if not capturando:
                 return
             _set_capturando(False)
-            status_var.set("DESATIVADO")
+            _p = perfis.get(perfil_ativo, {})
+            if _p.get("pos_poke", None) is not None:
+                status_var.set("CONFIGURADO ✅")
+            else:
+                status_var.set("NÃO CONFIGURADO")
             print("Modo captura finalizado.")
 
         btn_ativar = tk.Button(
@@ -923,8 +930,14 @@ def main():
 
         def _update_status_color(*_):
             val = status_var.get()
-            status_lbl.config(fg=_RED if val == "DESATIVADO" else _GREEN)
+            if "CONFIGURADO" in val and "NÃO" not in val:
+                status_lbl.config(fg=_GREEN)
+            elif "AGUARDANDO" in val:
+                status_lbl.config(fg=_CYAN)
+            else:
+                status_lbl.config(fg=_RED)
         status_var.trace_add("write", _update_status_color)
+        _update_status_color()
 
         # ═══ SEÇÃO 3: CONFIGURAÇÃO BATTLE ═══
         _ORANGE = "#f97316"

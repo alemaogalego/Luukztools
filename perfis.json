@@ -47,25 +47,25 @@
     "nightmare_attacks": [],
     "combo_mode_active": "HUNT NORMAL",
     "pos_poke": [
-      28,
-      54
+      29,
+      48
     ],
     "pos_center": [
-      950,
-      307
+      960,
+      319
     ],
     "bot_hotkey": "INSERT",
     "battle_check_region": [
-      4,
+      6,
       383,
-      200,
-      585
+      202,
+      609
     ],
     "game_screen_region": [
-      233,
+      234,
       25,
       1685,
-      779
+      780
     ]
   },
   "HUNTBOSS": {
