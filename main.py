@@ -7,7 +7,7 @@ import config_window
 import tkinter as tk
 from PIL import Image, ImageTk, ImageGrab
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pyautogui as py
 import time
 import shutil
@@ -2673,25 +2673,18 @@ def main():
 
     def scan_captura_loop():
         """
-        TURBO scan — parallel matchTemplate + downscale pre-filter:
-        - MSS (DXGI) — captura GPU nativa
-        - ThreadPoolExecutor — todos os refs processados em paralelo (OpenCV libera GIL)
-        - Downscale 50% pré-filtro — 4x menos pixels por match, verifica full-res só candidatos
-        - SHINY: matching por COR (BGR) com precisão 94%+
+        Scan otimizado: detecção paralela + T + click em cada alvo.
         """
         global captura_modo_ativo
-        print("🟢 Scan TURBO (MSS+Parallel+Downscale)")
+        print("🟢 Scan captura iniciado")
 
-        SCALE = 0.5  # Fator de downscale para pré-filtro
         THRESH_NORMAL = 0.84
         THRESH_SHINY  = 0.94
-        # Threshold mais baixo para pré-filtro (downscale perde detalhes)
-        PRE_THRESH_NORMAL = 0.75
-        PRE_THRESH_SHINY  = 0.88
+        NMS_DIST = 30
 
-        # Pré-carrega refs — GRAY para normal, COLOR (BGR) para shiny
-        ref_list_normal = []   # (nome, arq, img_gray, img_gray_small)
-        ref_list_shiny  = []   # (nome, arq, img_bgr, img_bgr_small)
+        # Pré-carrega refs
+        ref_list_normal = []
+        ref_list_shiny  = []
         for gaveta in list(captura_gavetas):
             if not gaveta.get("ativo", False):
                 continue
@@ -2706,60 +2699,59 @@ def main():
                     if is_shiny:
                         img = cv2.imread(caminho, cv2.IMREAD_COLOR)
                         if img is not None:
-                            small = cv2.resize(img, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
-                            ref_list_shiny.append((nome, f, img, small))
+                            ref_list_shiny.append((nome, f, img))
                     else:
                         img = cv2.imread(caminho, cv2.IMREAD_GRAYSCALE)
                         if img is not None:
-                            small = cv2.resize(img, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
-                            ref_list_normal.append((nome, f, img, small))
+                            ref_list_normal.append((nome, f, img))
         total = len(ref_list_normal) + len(ref_list_shiny)
-        print(f"📦 {total} refs ({len(ref_list_normal)} normal gray, {len(ref_list_shiny)} shiny color)")
+        print(f"📦 {total} refs ({len(ref_list_normal)} normal, {len(ref_list_shiny)} shiny)")
 
         if total == 0:
             print("⚠ Nenhuma ref encontrada!")
             captura_modo_ativo = False
             return
 
-        # --- Funções de matching para ThreadPoolExecutor ---
-        def _match_normal_pre(args):
-            """Pré-filtro downscale — retorna (score, idx) ou None."""
-            idx, screen_small, ref_small, pre_thresh = args
-            res = cv2.matchTemplate(screen_small, ref_small, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(res)
-            if max_val >= pre_thresh:
-                return (max_val, idx)
-            return None
-
-        def _match_normal_full(screen_gray, ref_gray):
-            """Verificação full-res — retorna (max_val, max_loc) ou None."""
+        def _match_normal(args):
+            idx, screen_gray, ref_gray = args
             res = cv2.matchTemplate(screen_gray, ref_gray, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(res)
-            if max_val >= THRESH_NORMAL:
-                return (max_val, max_loc)
-            return None
+            locs = np.where(res >= THRESH_NORMAL)
+            if len(locs[0]) == 0:
+                return None
+            hits = []
+            for py, px in zip(locs[0], locs[1]):
+                hits.append((int(px), int(py), float(res[py, px])))
+            hits.sort(key=lambda h: h[2], reverse=True)
+            kept = []
+            for hx, hy, hs in hits:
+                if all(abs(hx - kx) >= NMS_DIST or abs(hy - ky) >= NMS_DIST for kx, ky, _ in kept):
+                    kept.append((hx, hy, hs))
+            return (kept, idx, "n") if kept else None
 
-        def _match_shiny_pre(args):
-            idx, screen_small, ref_small, pre_thresh = args
-            res = cv2.matchTemplate(screen_small, ref_small, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(res)
-            if max_val >= pre_thresh:
-                return (max_val, idx)
-            return None
-
-        def _match_shiny_full(screen_bgr, ref_bgr):
+        def _match_shiny(args):
+            idx, screen_bgr, ref_bgr = args
             res = cv2.matchTemplate(screen_bgr, ref_bgr, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, max_loc = cv2.minMaxLoc(res)
-            if max_val >= THRESH_SHINY:
-                return (max_val, max_loc)
-            return None
+            locs = np.where(res >= THRESH_SHINY)
+            if len(locs[0]) == 0:
+                return None
+            hits = []
+            for py, px in zip(locs[0], locs[1]):
+                hits.append((int(px), int(py), float(res[py, px])))
+            hits.sort(key=lambda h: h[2], reverse=True)
+            kept = []
+            for hx, hy, hs in hits:
+                if all(abs(hx - kx) >= NMS_DIST or abs(hy - ky) >= NMS_DIST for kx, ky, _ in kept):
+                    kept.append((hx, hy, hs))
+            return (kept, idx, "s") if kept else None
 
-        # Número de workers = refs ou CPUs, o que for menor
+        # Pré-calcula metade de cada ref
+        normal_half = [(ref[2].shape[1] // 2, ref[2].shape[0] // 2) for ref in ref_list_normal]
+        shiny_half = [(ref[2].shape[1] // 2, ref[2].shape[0] // 2) for ref in ref_list_shiny]
+
         n_workers = min(total, os.cpu_count() or 4)
 
         try:
             with mss.mss() as sct, ThreadPoolExecutor(max_workers=n_workers) as pool:
-                # Usa game_screen_region se configurado, senão monitor inteiro
                 if game_screen_region is not None:
                     gx1, gy1, gx2, gy2 = game_screen_region
                     monitor = {"left": gx1, "top": gy1, "width": gx2 - gx1, "height": gy2 - gy1}
@@ -2771,80 +2763,57 @@ def main():
                     print("⚠ Game region não configurado — escaneando monitor inteiro.")
 
                 while captura_modo_ativo:
-                    # MSS DXGI: captura BGRA direto da GPU
                     try:
                         raw = sct.grab(monitor)
                         frame = np.frombuffer(raw.bgra, dtype=np.uint8).reshape(raw.height, raw.width, 4)
                     except Exception:
                         continue
 
-                    encontrou = False
+                    # Submete detecção paralela
+                    futures = []
+                    if ref_list_normal:
+                        screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                        for i, ref in enumerate(ref_list_normal):
+                            futures.append(pool.submit(_match_normal, (i, screen_gray, ref[2])))
+                    if ref_list_shiny:
+                        screen_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                        for i, ref in enumerate(ref_list_shiny):
+                            futures.append(pool.submit(_match_shiny, (i, screen_bgr, ref[2])))
 
-                    # --- Fase 1: Pré-filtro PARALELO com downscale ---
-                    screen_small = cv2.resize(frame, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+                    # Coleta todos os alvos
+                    alvos = []
+                    for fut in as_completed(futures):
+                        result = fut.result()
+                        if result is None:
+                            continue
+                        hits, idx, tipo = result
+                        if tipo == "n":
+                            hw, hh = normal_half[idx]
+                            nome, arq = ref_list_normal[idx][0], ref_list_normal[idx][1]
+                            icon = "🎯"
+                        else:
+                            hw, hh = shiny_half[idx]
+                            nome, arq = ref_list_shiny[idx][0], ref_list_shiny[idx][1]
+                            icon = "✨"
+                        for hx, hy, score in hits:
+                            cx = offset_x + hx + hw
+                            cy = offset_y + hy + hh
+                            alvos.append((cx, cy, nome, arq, score, icon))
 
-                    # NORMAL (grayscale)
-                    if ref_list_normal and not encontrou:
-                        screen_small_gray = cv2.cvtColor(screen_small, cv2.COLOR_BGRA2GRAY)
-                        tasks = [(i, screen_small_gray, ref[3], PRE_THRESH_NORMAL) for i, ref in enumerate(ref_list_normal)]
-                        candidates = list(pool.map(_match_normal_pre, tasks))
-                        # Filtra candidatos válidos, ordena por score desc
-                        candidates = [c for c in candidates if c is not None]
-                        candidates.sort(key=lambda x: x[0], reverse=True)
-
-                        if candidates:
-                            # Fase 2: Verificação full-res só nos candidatos
-                            screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
-                            for score, idx in candidates:
-                                if not captura_modo_ativo:
-                                    break
-                                nome, arq, ref_gray, _ = ref_list_normal[idx]
-                                result = _match_normal_full(screen_gray, ref_gray)
-                                if result:
-                                    max_val, max_loc = result
-                                    h, w = ref_gray.shape
-                                    cx = offset_x + max_loc[0] + w // 2
-                                    cy = offset_y + max_loc[1] + h // 2
-                                    ctypes.windll.user32.SetCursorPos(cx, cy)
-                                    keyboard.press_and_release('t')
-                                    time.sleep(0.05)
-                                    _win_click(cx, cy)
-                                    print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
-                                    encontrou = True
-                                    time.sleep(0.6)
-                                    break
-
-                    # SHINY (color BGR)
-                    if ref_list_shiny and not encontrou:
-                        screen_small_bgr = cv2.cvtColor(screen_small, cv2.COLOR_BGRA2BGR)
-                        tasks = [(i, screen_small_bgr, ref[3], PRE_THRESH_SHINY) for i, ref in enumerate(ref_list_shiny)]
-                        candidates = list(pool.map(_match_shiny_pre, tasks))
-                        candidates = [c for c in candidates if c is not None]
-                        candidates.sort(key=lambda x: x[0], reverse=True)
-
-                        if candidates:
-                            screen_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                            for score, idx in candidates:
-                                if not captura_modo_ativo:
-                                    break
-                                nome, arq, ref_bgr, _ = ref_list_shiny[idx]
-                                result = _match_shiny_full(screen_bgr, ref_bgr)
-                                if result:
-                                    max_val, max_loc = result
-                                    h, w = ref_bgr.shape[:2]
-                                    cx = offset_x + max_loc[0] + w // 2
-                                    cy = offset_y + max_loc[1] + h // 2
-                                    ctypes.windll.user32.SetCursorPos(cx, cy)
-                                    keyboard.press_and_release('t')
-                                    time.sleep(0.05)
-                                    _win_click(cx, cy)
-                                    print(f"✨ SHINY {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
-                                    encontrou = True
-                                    time.sleep(0.6)
-                                    break
-
-                    if not encontrou:
+                    # T + click em cada alvo encontrado
+                    if alvos:
+                        for cx, cy, nome, arq, score, icon in alvos:
+                            if not captura_modo_ativo:
+                                break
+                            ctypes.windll.user32.SetCursorPos(cx, cy)
+                            keyboard.press_and_release('t')
+                            time.sleep(0.05)
+                            _win_click(cx, cy)
+                            print(f"{icon} {nome} ({arq}) — ({cx},{cy}) [{score:.0%}]")
+                            time.sleep(0.3)
+                    else:
                         time.sleep(0.01)
+
         except Exception as e:
             print(f"⚠ Erro scan: {e}")
 
