@@ -48,6 +48,12 @@ pokeattack_key12 = ""
 revive_key = ""
 revive_delay = "0.5"
 
+# ---- Revive Auto (hotkey global) ----
+revive_auto_enabled = False
+revive_auto_hotkey = ""
+revive_auto_interrupt = False  # flag para interromper combo quando revive auto é acionado
+revive_auto_event = threading.Event()  # evento para interromper sleep do combo instantaneamente
+
 # Hunt attacks: lista dinâmica [{"key": "q", "delay": 0.5, "type": "atk"}, ...]
 hunt_attacks = []
 
@@ -137,12 +143,15 @@ def aplicar_perfil(nome):
     global bot_hotkey
     global battle_check_region
     global game_screen_region
+    global revive_auto_enabled, revive_auto_hotkey
 
     perfil = perfis.get(nome, {})
     pokestop_key = perfil.get("pokestop_key", "")
     pokemedi_key = perfil.get("pokemedi_key", "")
     revive_key = perfil.get("revive_key", "")
     revive_delay = perfil.get("revive_delay", "0.5")
+    revive_auto_enabled = perfil.get("revive_auto_enabled", False)
+    revive_auto_hotkey = perfil.get("revive_auto_hotkey", "")
     pokestop_delay = perfil.get("pokestop_delay", "")
     pokemedi_delay = perfil.get("pokemedi_delay", "")
     combo_start_key = perfil.get("combo_start_key", "")
@@ -207,7 +216,9 @@ def salvar_perfil_atual(nome):
         "pos_center": list(combo.pos_center),
         "bot_hotkey": bot_hotkey,
         "battle_check_region": list(battle_check_region) if battle_check_region else None,
-        "game_screen_region": list(game_screen_region) if game_screen_region else None
+        "game_screen_region": list(game_screen_region) if game_screen_region else None,
+        "revive_auto_enabled": revive_auto_enabled,
+        "revive_auto_hotkey": revive_auto_hotkey
     }
     salvar_perfis()
 
@@ -267,6 +278,12 @@ def has_enemies():
         print(f"⚠ Erro battle check: {e}")
         return True  # em caso de erro, assume que tem
 
+def _should_continue_combo():
+    """Wrapper para should_continue que também checa revive_auto_interrupt."""
+    if revive_auto_interrupt:
+        return False
+    return has_enemies()
+
 def start_combo():
     global combo_running
     if not bot_active:
@@ -283,14 +300,17 @@ def start_combo():
         try: update_overlay_status()
         except: pass
         print("⚔ Inimigos detectados! Executando combo...")
+        revive_auto_event.clear()  # garante que o event está limpo antes de combar
         if combo_mode_active == "NIGHTMARE":
-            result = combo.combo_nightmare(nightmare_attacks, should_continue=has_enemies)
+            result = combo.combo_nightmare(nightmare_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
             print("Combo Nightmare executado!")
         else:
-            result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=has_enemies)
+            result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
             print("Combo Hunt Normal executado!")
-        # Se o combo parou porque os inimigos morreram → usar revive automaticamente
-        if result is False and revive_key:
+        # Se o combo parou por revive_auto_interrupt, não faz revive automático (revive_auto cuida)
+        if result is False and revive_auto_interrupt:
+            print("💚 Combo interrompido pelo Revive Auto.")
+        elif result is False and revive_key:
             print("💀 Inimigos eliminados! Usando revive automaticamente...")
             time.sleep(float(revive_delay) if revive_delay else 0.5)
             combo.revive(revive_key)
@@ -303,6 +323,50 @@ def start_combo():
         except: pass
     else:
         print("Combo está desligado, não executa!")
+
+def do_revive_auto():
+    """Executa o Revive Auto EMERGENCIAL: para o combo instantaneamente e usa revive sem delay."""
+    global revive_auto_interrupt
+    if not bot_active:
+        return
+    if not revive_auto_enabled:
+        return
+    if not revive_key:
+        print("⚠ Revive Auto: tecla de revive não configurada!")
+        return
+    print("💚 Revive Auto EMERGENCIAL acionado!")
+    # Se combo está rodando, interrompe INSTANTANEAMENTE
+    if combo_running:
+        revive_auto_interrupt = True
+        revive_auto_event.set()  # acorda qualquer time.sleep no combo imediatamente
+        # Espera o combo parar (máx 1 segundo — deve ser quase instantâneo)
+        for _ in range(20):
+            if not combo_running:
+                break
+            time.sleep(0.05)
+        revive_auto_interrupt = False
+        revive_auto_event.clear()
+    # Executa o revive INSTANTANEAMENTE — sem delay
+    combo.revive(revive_key)
+    print("✅ Revive Auto executado com sucesso!")
+
+def _register_revive_auto_hotkey():
+    """Registra a hotkey global do Revive Auto."""
+    if revive_auto_hotkey and revive_auto_enabled:
+        try:
+            keyboard.add_hotkey(revive_auto_hotkey,
+                                lambda: threading.Thread(target=do_revive_auto, daemon=True).start(),
+                                suppress=False)
+        except Exception as e:
+            print(f"⚠ Erro ao registrar hotkey Revive Auto: {e}")
+
+def _unregister_revive_auto_hotkey():
+    """Remove a hotkey global do Revive Auto."""
+    if revive_auto_hotkey:
+        try:
+            keyboard.remove_hotkey(revive_auto_hotkey)
+        except Exception:
+            pass
 
 def toggle_bot():
     """Liga/desliga o bot inteiro (master switch)."""
@@ -353,7 +417,7 @@ def toggle_activation():
         except: pass
     else:
         combo_active = True
-        keyboard.add_hotkey(combo_start_key, start_combo)
+        keyboard.add_hotkey(combo_start_key, lambda: threading.Thread(target=start_combo, daemon=True).start())
         print('Combo ativado')
         try: update_overlay_status()
         except: pass
@@ -851,6 +915,92 @@ def main():
         )
         btn_hotkey.pack(side="right")
 
+        # ═══ SEÇÃO 1.5: REVIVE AUTO ═══
+        _MAGENTA = "#c026d3"
+        _cfg_section_label(content, "💚  REVIVE AUTO", _MAGENTA)
+
+        ra_card = tk.Frame(content, bg=_CARD, highlightbackground=_BORDER,
+                           highlightthickness=1)
+        ra_card.pack(fill="x", pady=(6, 0))
+
+        # Info box
+        ra_info_frame = tk.Frame(ra_card, bg="#0a0a0c", highlightbackground=_BORDER,
+                                 highlightthickness=1)
+        ra_info_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        ra_info_inner = tk.Frame(ra_info_frame, bg="#0a0a0c")
+        ra_info_inner.pack(fill="x", padx=8, pady=8)
+        tk.Label(ra_info_inner, text="💚", font=("Segoe UI Emoji", 11),
+                 bg="#0a0a0c", fg=_MAGENTA).pack(side="left", padx=(0, 8))
+        tk.Label(ra_info_inner,
+                 text="Ao pressionar a hotkey, cancela o combo\nem andamento e usa o Revive na hora.",
+                 font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
+                 justify="left").pack(side="left")
+
+        # Linha: toggle ON/OFF + hotkey
+        ra_inner = tk.Frame(ra_card, bg=_CARD)
+        ra_inner.pack(fill="x", padx=12, pady=(8, 10))
+
+        # Toggle ON/OFF
+        ra_enabled_var = tk.BooleanVar(value=revive_auto_enabled)
+        _config_widgets["ra_enabled_var"] = ra_enabled_var
+
+        ra_toggle_text = tk.StringVar(value="● LIGADO" if revive_auto_enabled else "● DESLIGADO")
+
+        def _toggle_ra():
+            val = not ra_enabled_var.get()
+            ra_enabled_var.set(val)
+            if val:
+                ra_toggle_text.set("● LIGADO")
+                btn_ra_toggle.config(bg="#16a34a", fg="white")
+            else:
+                ra_toggle_text.set("● DESLIGADO")
+                btn_ra_toggle.config(bg="#27272a", fg="#52525b")
+
+        btn_ra_toggle = tk.Button(
+            ra_inner, textvariable=ra_toggle_text,
+            font=("Consolas", 9, "bold"),
+            bg="#16a34a" if revive_auto_enabled else "#27272a",
+            fg="white" if revive_auto_enabled else "#52525b",
+            activebackground="#18181b", bd=0, pady=6, cursor="hand2",
+            command=_toggle_ra, relief="flat"
+        )
+        btn_ra_toggle.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        _config_widgets["btn_ra_toggle"] = btn_ra_toggle
+        _config_widgets["ra_toggle_text"] = ra_toggle_text
+
+        # Hotkey button
+        ra_hotkey_var = tk.StringVar(value=revive_auto_hotkey.upper() if revive_auto_hotkey else "---")
+        _config_widgets["ra_hotkey_var"] = ra_hotkey_var
+        _capturing_ra_hotkey = [False]
+
+        def _start_ra_hotkey_capture():
+            if _capturing_ra_hotkey[0]:
+                return
+            _capturing_ra_hotkey[0] = True
+            ra_hotkey_var.set("...")
+            btn_ra_hotkey.config(fg="#ef4444")
+            def on_key(event):
+                if event.event_type == keyboard.KEY_DOWN:
+                    ra_hotkey_var.set(event.name.upper())
+                    btn_ra_hotkey.config(fg=_MAGENTA)
+                    _capturing_ra_hotkey[0] = False
+                    keyboard.unhook(hook_ref[0])
+            hook_ref = [keyboard.hook(on_key)]
+
+        lbl_ra_key = tk.Frame(ra_inner, bg=_CARD)
+        lbl_ra_key.pack(side="right")
+        tk.Label(lbl_ra_key, text="HOTKEY:", font=("Consolas", 7, "bold"),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 4))
+        btn_ra_hotkey = tk.Button(
+            lbl_ra_key, textvariable=ra_hotkey_var,
+            font=("Consolas", 11, "bold"), bg="#18181b", fg=_MAGENTA,
+            bd=1, relief="solid", padx=12, pady=4, cursor="hand2",
+            activebackground="#27272a", activeforeground=_MAGENTA,
+            command=_start_ra_hotkey_capture
+        )
+        btn_ra_hotkey.pack(side="left")
+
         # ═══ SEÇÃO 2: CAPTURA REVIVE & POS ═══
         _cfg_section_label(content, "◎  CAPTURA REVIVE & POS", _CYAN)
 
@@ -1143,16 +1293,40 @@ def main():
         footer.pack(fill="x", padx=16, pady=(8, 12))
 
         def _salvar_cfg():
+            global revive_auto_enabled, revive_auto_hotkey
             new_key = hotkey_var.get().strip()
             if not new_key or new_key == "...":
                 return
             old_key = bot_hotkey
             _on_hotkey_changed(old_key, new_key)
+
+            # Salva Revive Auto
+            old_ra_hotkey = revive_auto_hotkey
+            old_ra_enabled = revive_auto_enabled
+            ra_new_enabled = ra_enabled_var.get()
+            ra_new_hotkey_raw = ra_hotkey_var.get().strip()
+            ra_new_hotkey = "" if ra_new_hotkey_raw in ("...", "---") else ra_new_hotkey_raw.lower()
+
+            # Unregister old revive auto hotkey if changed or disabled
+            if old_ra_hotkey and (old_ra_hotkey != ra_new_hotkey or old_ra_enabled != ra_new_enabled):
+                _unregister_revive_auto_hotkey()
+
+            revive_auto_enabled = ra_new_enabled
+            revive_auto_hotkey = ra_new_hotkey
+
+            # Register new revive auto hotkey if enabled
+            if revive_auto_enabled and revive_auto_hotkey:
+                _register_revive_auto_hotkey()
+
             perfil = perfis.get(perfil_ativo, {})
             perfil["bot_hotkey"] = new_key
+            perfil["revive_auto_enabled"] = revive_auto_enabled
+            perfil["revive_auto_hotkey"] = revive_auto_hotkey
             perfis[perfil_ativo] = perfil
             salvar_perfis()
-            print(f"✅ Configs salvas! Hotkey bot: {new_key}")
+            ra_status = "LIGADO" if revive_auto_enabled else "DESLIGADO"
+            ra_key_display = revive_auto_hotkey.upper() if revive_auto_hotkey else "---"
+            print(f"✅ Configs salvas! Hotkey bot: {new_key} | Revive Auto: {ra_status} [{ra_key_display}]")
 
         btn_salvar = tk.Button(
             footer, text="💾  SALVAR CONFIGS",
@@ -1198,6 +1372,17 @@ def main():
         # Atualiza hotkey_var com valor atual
         if "hotkey_var" in _config_widgets:
             _config_widgets["hotkey_var"].set(bot_hotkey)
+        # Atualiza Revive Auto vars com valor atual
+        if "ra_enabled_var" in _config_widgets:
+            _config_widgets["ra_enabled_var"].set(revive_auto_enabled)
+            if revive_auto_enabled:
+                _config_widgets["ra_toggle_text"].set("● LIGADO")
+                _config_widgets["btn_ra_toggle"].config(bg="#16a34a", fg="white")
+            else:
+                _config_widgets["ra_toggle_text"].set("● DESLIGADO")
+                _config_widgets["btn_ra_toggle"].config(bg="#27272a", fg="#52525b")
+        if "ra_hotkey_var" in _config_widgets:
+            _config_widgets["ra_hotkey_var"].set(revive_auto_hotkey.upper() if revive_auto_hotkey else "---")
         main_content_frame.pack_forget()
         config_content_frame.pack(fill="both", expand=True)
 
@@ -2044,7 +2229,13 @@ def main():
         # Frame do popup (aparece no topo do scroll)
         popup_frame = tk.Frame(scroll_content, bg=_CARD,
                                highlightbackground=_CYAN, highlightthickness=1)
-        popup_frame.pack(fill="x", padx=16, pady=(6, 4))
+        existing = scroll_content.winfo_children()
+        # Filtra: só widgets que não sejam o próprio popup
+        existing = [w for w in existing if w is not popup_frame]
+        if existing:
+            popup_frame.pack(fill="x", padx=16, pady=(6, 4), before=existing[0])
+        else:
+            popup_frame.pack(fill="x", padx=16, pady=(6, 4))
 
         tk.Label(popup_frame, text="NOME DO POKÉMON:",
                  font=("Consolas", 9, "bold"),
@@ -2084,7 +2275,7 @@ def main():
             gaveta_data = {"nome": nome, "ativo": False, "shiny": shiny_var.get()}
             # Verifica duplicata
             if not any(g["nome"] == nome for g in captura_gavetas):
-                captura_gavetas.append(gaveta_data)
+                captura_gavetas.insert(0, gaveta_data)
             popup_frame.destroy()
             _refresh_capture_drawers()
 
@@ -2415,6 +2606,9 @@ def main():
 
     # Registra hotkey global do bot
     keyboard.add_hotkey(bot_hotkey, toggle_bot, suppress=False)
+
+    # Registra hotkey Revive Auto (se configurada)
+    _register_revive_auto_hotkey()
 
     # ========== SISTEMA DE CAPTURA (GAVETAS) ==========
     janela_captura = None

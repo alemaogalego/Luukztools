@@ -113,7 +113,7 @@ def revive(revive_key):
     return True
 
 
-def combo_hunt_dynamic(attacks, should_continue=None):
+def combo_hunt_dynamic(attacks, should_continue=None, interrupt_event=None):
     """
     Executa combo Hunt Normal com lista dinâmica de ações.
     attacks: lista de dicts [{"key": "q", "delay": 0.5, "type": "atk"}, ...]
@@ -121,7 +121,17 @@ def combo_hunt_dynamic(attacks, should_continue=None):
     - type "revive": executa rotina completa de revive (right-click, key, right-click, e, move)
     - type "medicine"/"pokestop": pressiona key + delay
     should_continue: callback que retorna True se deve continuar, False para interromper
+    interrupt_event: threading.Event — se set(), interrompe o sleep imediatamente
     """
+    def _sleep(secs):
+        if interrupt_event is not None:
+            interrupt_event.wait(secs)
+            if interrupt_event.is_set():
+                return False
+        else:
+            time.sleep(secs)
+        return True
+
     for atk in attacks:
         # Verifica se ainda tem inimigo antes de cada ação
         if should_continue is not None and not should_continue():
@@ -139,13 +149,15 @@ def combo_hunt_dynamic(attacks, should_continue=None):
             revive(key)
         else:
             keyboard.press_and_release(key)
-            time.sleep(delay)
+            if not _sleep(delay):
+                print("⚠ Combo interrompido (interrupt)!")
+                return False
 
     print("Combo Hunt executado")
     return True
 
 
-def combo_nightmare(nightmare_attacks, should_continue=None):
+def combo_nightmare(nightmare_attacks, should_continue=None, interrupt_event=None):
     """
     Executa combo no modo Nightmare.
     nightmare_attacks: lista de dicts [{"key1": "alt", "key2": "1", "delay": 0.5, "type": "pokeball"}, ...]
@@ -154,7 +166,17 @@ def combo_nightmare(nightmare_attacks, should_continue=None):
     - type "revive": executa rotina completa de revive
     - type "medicine"/"pokestop": pressiona key + delay
     should_continue: callback que retorna True se deve continuar, False para interromper
+    interrupt_event: threading.Event — se set(), interrompe o sleep imediatamente
     """
+    def _sleep(secs):
+        if interrupt_event is not None:
+            interrupt_event.wait(secs)
+            if interrupt_event.is_set():
+                return False
+        else:
+            time.sleep(secs)
+        return True
+
     for atk in nightmare_attacks:
         # Verifica se ainda tem inimigo antes de cada ação
         if should_continue is not None and not should_continue():
@@ -174,11 +196,15 @@ def combo_nightmare(nightmare_attacks, should_continue=None):
         elif tipo == "pokeball" and key2:
             # Troca de pokémon: combo key (ex: alt+1)
             keyboard.press_and_release(f"{key1}+{key2}")
-            time.sleep(delay)
+            if not _sleep(delay):
+                print("⚠ Combo interrompido (interrupt)!")
+                return False
         else:
             # Ataque normal: tecla única
             keyboard.press_and_release(key1)
-            time.sleep(delay)
+            if not _sleep(delay):
+                print("⚠ Combo interrompido (interrupt)!")
+                return False
 
     print("Combo Nightmare executado")
     return True
