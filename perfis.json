@@ -62,12 +62,12 @@
       609
     ],
     "game_screen_region": [
-      234,
-      25,
-      1685,
-      780
+      217,
+      29,
+      1677,
+      801
     ],
-    "revive_auto_enabled": false,
+    "revive_auto_enabled": true,
     "revive_auto_hotkey": "r"
   },
   "HUNTBOSS": {

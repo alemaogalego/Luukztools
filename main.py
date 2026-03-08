@@ -7,6 +7,7 @@ import config_window
 import tkinter as tk
 from PIL import Image, ImageTk, ImageGrab
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import pyautogui as py
 import time
 import shutil
@@ -325,9 +326,12 @@ def start_combo():
     else:
         print("Combo está desligado, não executa!")
 
+_revive_auto_lock = threading.Lock()
+_revive_auto_last = 0.0
+
 def do_revive_auto():
     """Executa o Revive Auto EMERGENCIAL: para o combo instantaneamente e usa revive sem delay."""
-    global revive_auto_interrupt
+    global revive_auto_interrupt, _revive_auto_last
     if not bot_active:
         return
     if not revive_auto_enabled:
@@ -335,39 +339,57 @@ def do_revive_auto():
     if not revive_key:
         print("⚠ Revive Auto: tecla de revive não configurada!")
         return
-    print("💚 Revive Auto EMERGENCIAL acionado!")
-    # Se combo está rodando, interrompe INSTANTANEAMENTE
-    if combo_running:
-        revive_auto_interrupt = True
-        revive_auto_event.set()  # acorda qualquer time.sleep no combo imediatamente
-        # Espera o combo parar (máx 1 segundo — deve ser quase instantâneo)
-        for _ in range(20):
-            if not combo_running:
-                break
-            time.sleep(0.05)
-        revive_auto_interrupt = False
-        revive_auto_event.clear()
-    # Executa o revive INSTANTANEAMENTE — sem delay
-    combo.revive(revive_key)
-    print("✅ Revive Auto executado com sucesso!")
+    # Guard: impede dupla execução (cooldown 2s + lock)
+    if not _revive_auto_lock.acquire(blocking=False):
+        return
+    try:
+        now = time.time()
+        if now - _revive_auto_last < 2.0:
+            return
+        _revive_auto_last = now
+        print("💚 Revive Auto EMERGENCIAL acionado!")
+        # Se combo está rodando, interrompe INSTANTANEAMENTE
+        if combo_running:
+            revive_auto_interrupt = True
+            revive_auto_event.set()  # acorda qualquer time.sleep no combo imediatamente
+            # Espera o combo parar (máx 1 segundo — deve ser quase instantâneo)
+            for _ in range(20):
+                if not combo_running:
+                    break
+                time.sleep(0.05)
+            revive_auto_interrupt = False
+            revive_auto_event.clear()
+        # Executa o revive INSTANTANEAMENTE — sem delay
+        combo.revive(revive_key)
+        print("✅ Revive Auto executado com sucesso!")
+    finally:
+        _revive_auto_lock.release()
+
+_revive_auto_hook = None
 
 def _register_revive_auto_hotkey():
-    """Registra a hotkey global do Revive Auto."""
+    """Registra a hotkey global do Revive Auto via on_press (funciona mesmo segurando WASD)."""
+    global _revive_auto_hook
+    _unregister_revive_auto_hotkey()
     if revive_auto_hotkey and revive_auto_enabled:
+        target_key = revive_auto_hotkey.lower()
+        def _on_key(event):
+            if event.name and event.name.lower() == target_key:
+                threading.Thread(target=do_revive_auto, daemon=True).start()
         try:
-            keyboard.add_hotkey(revive_auto_hotkey,
-                                lambda: threading.Thread(target=do_revive_auto, daemon=True).start(),
-                                suppress=False)
+            _revive_auto_hook = keyboard.on_press(_on_key)
         except Exception as e:
             print(f"⚠ Erro ao registrar hotkey Revive Auto: {e}")
 
 def _unregister_revive_auto_hotkey():
     """Remove a hotkey global do Revive Auto."""
-    if revive_auto_hotkey:
+    global _revive_auto_hook
+    if _revive_auto_hook is not None:
         try:
-            keyboard.remove_hotkey(revive_auto_hotkey)
+            keyboard.unhook(_revive_auto_hook)
         except Exception:
             pass
+        _revive_auto_hook = None
 
 def toggle_bot():
     """Liga/desliga o bot inteiro (master switch)."""
@@ -2651,19 +2673,25 @@ def main():
 
     def scan_captura_loop():
         """
-        MAX SPEED scan:
-        - MSS (DXGI) — captura GPU nativa, ~3x mais rápido que ImageGrab
-        - BGRA→Gray direto (1 conversão, pula RGB)
-        - ctypes Win32 mouse (bypassa pyautogui)
-        - Idle: 0.05s | Pós-ball: 0.6s
-        - SHINY: usa matching por COR (BGR) com precisão 94%+
+        TURBO scan — parallel matchTemplate + downscale pre-filter:
+        - MSS (DXGI) — captura GPU nativa
+        - ThreadPoolExecutor — todos os refs processados em paralelo (OpenCV libera GIL)
+        - Downscale 50% pré-filtro — 4x menos pixels por match, verifica full-res só candidatos
+        - SHINY: matching por COR (BGR) com precisão 94%+
         """
         global captura_modo_ativo
-        print("🟢 Scan MAX SPEED (MSS+DXGI+ctypes)")
+        print("🟢 Scan TURBO (MSS+Parallel+Downscale)")
+
+        SCALE = 0.5  # Fator de downscale para pré-filtro
+        THRESH_NORMAL = 0.84
+        THRESH_SHINY  = 0.94
+        # Threshold mais baixo para pré-filtro (downscale perde detalhes)
+        PRE_THRESH_NORMAL = 0.75
+        PRE_THRESH_SHINY  = 0.88
 
         # Pré-carrega refs — GRAY para normal, COLOR (BGR) para shiny
-        ref_list_normal = []   # (nome, arq, img_gray)
-        ref_list_shiny = []    # (nome, arq, img_bgr)
+        ref_list_normal = []   # (nome, arq, img_gray, img_gray_small)
+        ref_list_shiny  = []   # (nome, arq, img_bgr, img_bgr_small)
         for gaveta in list(captura_gavetas):
             if not gaveta.get("ativo", False):
                 continue
@@ -2678,11 +2706,13 @@ def main():
                     if is_shiny:
                         img = cv2.imread(caminho, cv2.IMREAD_COLOR)
                         if img is not None:
-                            ref_list_shiny.append((nome, f, img))
+                            small = cv2.resize(img, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+                            ref_list_shiny.append((nome, f, img, small))
                     else:
                         img = cv2.imread(caminho, cv2.IMREAD_GRAYSCALE)
                         if img is not None:
-                            ref_list_normal.append((nome, f, img))
+                            small = cv2.resize(img, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
+                            ref_list_normal.append((nome, f, img, small))
         total = len(ref_list_normal) + len(ref_list_shiny)
         print(f"📦 {total} refs ({len(ref_list_normal)} normal gray, {len(ref_list_shiny)} shiny color)")
 
@@ -2691,8 +2721,44 @@ def main():
             captura_modo_ativo = False
             return
 
+        # --- Funções de matching para ThreadPoolExecutor ---
+        def _match_normal_pre(args):
+            """Pré-filtro downscale — retorna (score, idx) ou None."""
+            idx, screen_small, ref_small, pre_thresh = args
+            res = cv2.matchTemplate(screen_small, ref_small, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(res)
+            if max_val >= pre_thresh:
+                return (max_val, idx)
+            return None
+
+        def _match_normal_full(screen_gray, ref_gray):
+            """Verificação full-res — retorna (max_val, max_loc) ou None."""
+            res = cv2.matchTemplate(screen_gray, ref_gray, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+            if max_val >= THRESH_NORMAL:
+                return (max_val, max_loc)
+            return None
+
+        def _match_shiny_pre(args):
+            idx, screen_small, ref_small, pre_thresh = args
+            res = cv2.matchTemplate(screen_small, ref_small, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(res)
+            if max_val >= pre_thresh:
+                return (max_val, idx)
+            return None
+
+        def _match_shiny_full(screen_bgr, ref_bgr):
+            res = cv2.matchTemplate(screen_bgr, ref_bgr, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(res)
+            if max_val >= THRESH_SHINY:
+                return (max_val, max_loc)
+            return None
+
+        # Número de workers = refs ou CPUs, o que for menor
+        n_workers = min(total, os.cpu_count() or 4)
+
         try:
-            with mss.mss() as sct:
+            with mss.mss() as sct, ThreadPoolExecutor(max_workers=n_workers) as pool:
                 # Usa game_screen_region se configurado, senão monitor inteiro
                 if game_screen_region is not None:
                     gx1, gy1, gx2, gy2 = game_screen_region
@@ -2703,6 +2769,7 @@ def main():
                     monitor = sct.monitors[1]
                     offset_x, offset_y = 0, 0
                     print("⚠ Game region não configurado — escaneando monitor inteiro.")
+
                 while captura_modo_ativo:
                     # MSS DXGI: captura BGRA direto da GPU
                     try:
@@ -2711,54 +2778,70 @@ def main():
                     except Exception:
                         continue
 
-                    # Converte conforme necessário (lazy: só converte se tem refs)
-                    screen_gray = None
-                    screen_bgr = None
-                    if ref_list_normal:
-                        screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
-                    if ref_list_shiny:
-                        screen_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-
                     encontrou = False
 
-                    # --- Scan NORMAL (grayscale, threshold 0.84) ---
-                    for nome, arq, ref_gray in ref_list_normal:
-                        if not captura_modo_ativo:
-                            break
-                        res = cv2.matchTemplate(screen_gray, ref_gray, cv2.TM_CCOEFF_NORMED)
-                        _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                        if max_val >= 0.84:
-                            h, w = ref_gray.shape
-                            cx = offset_x + max_loc[0] + w // 2
-                            cy = offset_y + max_loc[1] + h // 2
-                            ctypes.windll.user32.SetCursorPos(cx, cy)
-                            keyboard.press_and_release('t')
-                            time.sleep(0.05)
-                            _win_click(cx, cy)
-                            print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
-                            encontrou = True
-                            time.sleep(0.6)
-                            break
+                    # --- Fase 1: Pré-filtro PARALELO com downscale ---
+                    screen_small = cv2.resize(frame, None, fx=SCALE, fy=SCALE, interpolation=cv2.INTER_AREA)
 
-                    # --- Scan SHINY (color BGR, threshold 0.94) ---
-                    if not encontrou:
-                        for nome, arq, ref_bgr in ref_list_shiny:
-                            if not captura_modo_ativo:
-                                break
-                            res = cv2.matchTemplate(screen_bgr, ref_bgr, cv2.TM_CCOEFF_NORMED)
-                            _, max_val, _, max_loc = cv2.minMaxLoc(res)
-                            if max_val >= 0.94:
-                                h, w = ref_bgr.shape[:2]
-                                cx = offset_x + max_loc[0] + w // 2
-                                cy = offset_y + max_loc[1] + h // 2
-                                ctypes.windll.user32.SetCursorPos(cx, cy)
-                                keyboard.press_and_release('t')
-                                time.sleep(0.05)
-                                _win_click(cx, cy)
-                                print(f"✨ SHINY {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
-                                encontrou = True
-                                time.sleep(0.6)
-                                break
+                    # NORMAL (grayscale)
+                    if ref_list_normal and not encontrou:
+                        screen_small_gray = cv2.cvtColor(screen_small, cv2.COLOR_BGRA2GRAY)
+                        tasks = [(i, screen_small_gray, ref[3], PRE_THRESH_NORMAL) for i, ref in enumerate(ref_list_normal)]
+                        candidates = list(pool.map(_match_normal_pre, tasks))
+                        # Filtra candidatos válidos, ordena por score desc
+                        candidates = [c for c in candidates if c is not None]
+                        candidates.sort(key=lambda x: x[0], reverse=True)
+
+                        if candidates:
+                            # Fase 2: Verificação full-res só nos candidatos
+                            screen_gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                            for score, idx in candidates:
+                                if not captura_modo_ativo:
+                                    break
+                                nome, arq, ref_gray, _ = ref_list_normal[idx]
+                                result = _match_normal_full(screen_gray, ref_gray)
+                                if result:
+                                    max_val, max_loc = result
+                                    h, w = ref_gray.shape
+                                    cx = offset_x + max_loc[0] + w // 2
+                                    cy = offset_y + max_loc[1] + h // 2
+                                    ctypes.windll.user32.SetCursorPos(cx, cy)
+                                    keyboard.press_and_release('t')
+                                    time.sleep(0.05)
+                                    _win_click(cx, cy)
+                                    print(f"🎯 {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
+                                    encontrou = True
+                                    time.sleep(0.6)
+                                    break
+
+                    # SHINY (color BGR)
+                    if ref_list_shiny and not encontrou:
+                        screen_small_bgr = cv2.cvtColor(screen_small, cv2.COLOR_BGRA2BGR)
+                        tasks = [(i, screen_small_bgr, ref[3], PRE_THRESH_SHINY) for i, ref in enumerate(ref_list_shiny)]
+                        candidates = list(pool.map(_match_shiny_pre, tasks))
+                        candidates = [c for c in candidates if c is not None]
+                        candidates.sort(key=lambda x: x[0], reverse=True)
+
+                        if candidates:
+                            screen_bgr = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+                            for score, idx in candidates:
+                                if not captura_modo_ativo:
+                                    break
+                                nome, arq, ref_bgr, _ = ref_list_shiny[idx]
+                                result = _match_shiny_full(screen_bgr, ref_bgr)
+                                if result:
+                                    max_val, max_loc = result
+                                    h, w = ref_bgr.shape[:2]
+                                    cx = offset_x + max_loc[0] + w // 2
+                                    cy = offset_y + max_loc[1] + h // 2
+                                    ctypes.windll.user32.SetCursorPos(cx, cy)
+                                    keyboard.press_and_release('t')
+                                    time.sleep(0.05)
+                                    _win_click(cx, cy)
+                                    print(f"✨ SHINY {nome} ({arq}) — ({cx},{cy}) [{max_val:.0%}]")
+                                    encontrou = True
+                                    time.sleep(0.6)
+                                    break
 
                     if not encontrou:
                         time.sleep(0.01)
