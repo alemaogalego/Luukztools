@@ -22,6 +22,7 @@ update_overlay_status = None  # referência global para atualizar o status do ov
 update_overlay_label = None  # referência global para atualizar o label do overlay
 update_overlay_scan = None  # referência global para atualizar pokeball do scan
 update_overlay_bot = None  # referência global para atualizar indicador BOT no overlay
+update_overlay_revive_auto = None  # referência global para atualizar indicador Revive Auto no overlay
 
 def resource_path(relative_path):
     """Acha o arquivo tanto no .py quanto no .exe"""
@@ -1327,6 +1328,12 @@ def main():
             ra_status = "LIGADO" if revive_auto_enabled else "DESLIGADO"
             ra_key_display = revive_auto_hotkey.upper() if revive_auto_hotkey else "---"
             print(f"✅ Configs salvas! Hotkey bot: {new_key} | Revive Auto: {ra_status} [{ra_key_display}]")
+            # Atualiza overlay
+            try:
+                if update_overlay_revive_auto:
+                    update_overlay_revive_auto()
+            except Exception:
+                pass
 
         btn_salvar = tk.Button(
             footer, text="💾  SALVAR CONFIGS",
@@ -4272,21 +4279,21 @@ def main():
     mini.withdraw()
     mini.overrideredirect(True)
     mini.attributes("-topmost", True)
-    mini.geometry("210x100+1200+680")
+    mini.geometry("230x100+1200+680")
     mini.attributes("-alpha", 0.93)
 
     # Canvas principal — estilo moderno escuro
-    bg = tk.Canvas(mini, width=210, height=100, highlightthickness=0)
+    bg = tk.Canvas(mini, width=230, height=100, highlightthickness=0)
     bg.place(x=0, y=0, relwidth=1, relheight=1)
 
     # Fundo escuro
-    bg.create_rectangle(0, 0, 210, 100, fill="#0c0c0e", outline="")
+    bg.create_rectangle(0, 0, 230, 100, fill="#0c0c0e", outline="")
 
     # Linha accent neon no topo
-    bg.create_rectangle(0, 0, 210, 2, fill="#00d4ff", outline="")
+    bg.create_rectangle(0, 0, 230, 2, fill="#00d4ff", outline="")
 
     # Linha accent neon embaixo
-    bg.create_rectangle(0, 98, 210, 100, fill="#7c3aed", outline="")
+    bg.create_rectangle(0, 98, 230, 100, fill="#7c3aed", outline="")
 
     # ── BARRA SUPERIOR: perfil + BOT toggle + status dots ──
     # Nome do perfil (esquerda)
@@ -4309,31 +4316,38 @@ def main():
     # Status dot (combo ativo/desativado)
     status_dot_id = bg.create_oval(184, 4, 198, 18, fill="#ff3b3b", outline="#333333", width=1)
 
+    # Revive Auto indicator (coração com R)
+    _ra_color = "#00ff88" if revive_auto_enabled else "#ff3b3b"
+    revive_auto_heart = bg.create_text(212, 11, text="\u2764R",
+                                        fill=_ra_color,
+                                        font=("Consolas", 8, "bold"),
+                                        anchor="center")
+
     # ── SEÇÃO CENTRAL: Combo | Captura (estilo React) ──
     # Fundo da seção central
-    bg.create_rectangle(8, 24, 202, 60, fill="#000000", outline="#1a1a2e", width=1)
+    bg.create_rectangle(8, 24, 222, 60, fill="#000000", outline="#1a1a2e", width=1)
 
     # Separador vertical central
-    bg.create_line(105, 28, 105, 56, fill="#27272a", width=1)
+    bg.create_line(115, 28, 115, 56, fill="#27272a", width=1)
 
     # ── COMBO (lado esquerdo) ──
-    combo_label = bg.create_text(56, 34, text="Combo",
+    combo_label = bg.create_text(61, 34, text="Combo",
                                   fill="#52525b", font=("Consolas", 7, "bold"), anchor="center")
-    combo_status = bg.create_text(56, 48, text="OFF",
+    combo_status = bg.create_text(61, 48, text="OFF",
                                    fill="#ff3b3b", font=("Consolas", 10, "bold"), anchor="center")
 
     # ── CAPTURA (lado direito) ──
-    captu_label = bg.create_text(154, 34, text="Captura",
+    captu_label = bg.create_text(168, 34, text="Captura",
                                   fill="#52525b", font=("Consolas", 7, "bold"), anchor="center")
-    captu_status = bg.create_text(154, 48, text="OFF",
+    captu_status = bg.create_text(168, 48, text="OFF",
                                    fill="#ff3b3b", font=("Consolas", 10, "bold"), anchor="center")
 
     # ── BOTÃO ABRIR ──
-    bg.create_rectangle(55, 66, 155, 82, fill="#7c3aed", outline="#9d5cff", width=1)
-    bg.create_text(105, 74, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
+    bg.create_rectangle(65, 66, 165, 82, fill="#7c3aed", outline="#9d5cff", width=1)
+    bg.create_text(115, 74, text="▲ ABRIR", fill="white", font=("Consolas", 8, "bold"))
 
     # Registra as funções no escopo global
-    global update_overlay_status, update_overlay_label, update_overlay_scan, update_overlay_bot
+    global update_overlay_status, update_overlay_label, update_overlay_scan, update_overlay_bot, update_overlay_revive_auto
 
     def update_overlay_status():
         """Atualiza o overlay do combo: bolinha = modo ligado, texto = execução (H)."""
@@ -4398,9 +4412,17 @@ def main():
         except Exception:
             pass
 
+    def update_overlay_revive_auto():
+        """Atualiza o indicador de Revive Auto no overlay."""
+        try:
+            color = "#00ff88" if revive_auto_enabled else "#ff3b3b"
+            bg.itemconfig(revive_auto_heart, fill=color)
+        except Exception:
+            pass
+
     def on_restore(event=None):
         cx, cy = event.x, event.y
-        if 55 <= cx <= 155 and 66 <= cy <= 82:
+        if 65 <= cx <= 165 and 66 <= cy <= 82:
             restaurar()
 
     bg.bind("<Button-1>", on_restore)

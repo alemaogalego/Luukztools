@@ -67,7 +67,7 @@
       1685,
       780
     ],
-    "revive_auto_enabled": true,
+    "revive_auto_enabled": false,
     "revive_auto_hotkey": "r"
   },
   "HUNTBOSS": {
