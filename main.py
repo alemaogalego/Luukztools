@@ -286,45 +286,53 @@ def _should_continue_combo():
         return False
     return has_enemies()
 
+_combo_start_lock = threading.Lock()
+
 def start_combo():
     global combo_running
     if not bot_active:
         print("⚠ Bot desligado! Combo não executa.")
         return
-    if combo_active:
-        # Verifica se tem inimigos antes de combar
-        enemies = has_enemies()
-        if not enemies:
-            print("🚫 Nenhum pokémon à vista! Combo cancelado.")
-            return
-        # Sinaliza combo ON no overlay
-        combo_running = True
-        try: update_overlay_status()
-        except: pass
-        print("⚔ Inimigos detectados! Executando combo...")
-        revive_auto_event.clear()  # garante que o event está limpo antes de combar
-        if combo_mode_active == "NIGHTMARE":
-            result = combo.combo_nightmare(nightmare_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
-            print("Combo Nightmare executado!")
+    # Impede múltiplas execuções simultâneas (key repeat / bouncing)
+    if not _combo_start_lock.acquire(blocking=False):
+        return
+    try:
+        if combo_active:
+            # Verifica se tem inimigos antes de combar
+            enemies = has_enemies()
+            if not enemies:
+                print("🚫 Nenhum pokémon à vista! Combo cancelado.")
+                return
+            # Sinaliza combo ON no overlay
+            combo_running = True
+            try: update_overlay_status()
+            except: pass
+            print("⚔ Inimigos detectados! Executando combo...")
+            revive_auto_event.clear()  # garante que o event está limpo antes de combar
+            if combo_mode_active == "NIGHTMARE":
+                result = combo.combo_nightmare(nightmare_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
+                print("Combo Nightmare executado!")
+            else:
+                result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
+                print("Combo Hunt Normal executado!")
+            # Se o combo parou por revive_auto_interrupt, não faz revive automático (revive_auto cuida)
+            if result is False and revive_auto_interrupt:
+                print("💚 Combo interrompido pelo Revive Auto.")
+            elif result is False and revive_key:
+                print("💀 Inimigos eliminados! Usando revive automaticamente...")
+                time.sleep(float(revive_delay) if revive_delay else 0.5)
+                combo.revive(revive_key)
+                print("✅ Revive usado com sucesso!")
+            elif result is False and not revive_key:
+                print("💀 Inimigos eliminados! Revive não configurado (sem tecla).")
+            # Sinaliza combo OFF no overlay
+            combo_running = False
+            try: update_overlay_status()
+            except: pass
         else:
-            result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
-            print("Combo Hunt Normal executado!")
-        # Se o combo parou por revive_auto_interrupt, não faz revive automático (revive_auto cuida)
-        if result is False and revive_auto_interrupt:
-            print("💚 Combo interrompido pelo Revive Auto.")
-        elif result is False and revive_key:
-            print("💀 Inimigos eliminados! Usando revive automaticamente...")
-            time.sleep(float(revive_delay) if revive_delay else 0.5)
-            combo.revive(revive_key)
-            print("✅ Revive usado com sucesso!")
-        elif result is False and not revive_key:
-            print("💀 Inimigos eliminados! Revive não configurado (sem tecla).")
-        # Sinaliza combo OFF no overlay
-        combo_running = False
-        try: update_overlay_status()
-        except: pass
-    else:
-        print("Combo está desligado, não executa!")
+            print("Combo está desligado, não executa!")
+    finally:
+        _combo_start_lock.release()
 
 _revive_auto_lock = threading.Lock()
 _revive_auto_last = 0.0

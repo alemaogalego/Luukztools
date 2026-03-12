@@ -30,7 +30,7 @@
       },
       {
         "key": "4",
-        "delay": 1.0,
+        "delay": 1.2,
         "type": "atk"
       },
       {
@@ -56,10 +56,10 @@
     ],
     "bot_hotkey": "INSERT",
     "battle_check_region": [
-      6,
-      383,
-      202,
-      609
+      3,
+      469,
+      201,
+      605
     ],
     "game_screen_region": [
       217,
@@ -70,7 +70,7 @@
     "revive_auto_enabled": true,
     "revive_auto_hotkey": "r"
   },
-  "HUNTBOSS": {
+  "camerupt": {
     "pokestop_key": "tab",
     "pokemedi_key": "f",
     "revive_key": "r",
@@ -85,7 +85,7 @@
         "type": "pokestop"
       },
       {
-        "key": "Q",
+        "key": "q",
         "delay": 0.5,
         "type": "atk"
       },
@@ -96,17 +96,27 @@
       },
       {
         "key": "3",
-        "delay": 0.8,
+        "delay": 0.9,
         "type": "atk"
       },
       {
         "key": "4",
-        "delay": 0.8,
+        "delay": 1.2,
         "type": "atk"
       },
       {
         "key": "5",
-        "delay": 0.8,
+        "delay": 1.2,
+        "type": "atk"
+      },
+      {
+        "key": "1",
+        "delay": 1.5,
+        "type": "atk"
+      },
+      {
+        "key": "6",
+        "delay": 1.0,
         "type": "atk"
       },
       {
@@ -118,13 +128,27 @@
     "nightmare_attacks": [],
     "combo_mode_active": "HUNT NORMAL",
     "pos_poke": [
-      28,
-      54
+      29,
+      48
     ],
     "pos_center": [
-      950,
-      307
+      960,
+      319
     ],
-    "bot_hotkey": "INSERT"
+    "bot_hotkey": "INSERT",
+    "battle_check_region": [
+      3,
+      469,
+      201,
+      605
+    ],
+    "game_screen_region": [
+      217,
+      29,
+      1677,
+      801
+    ],
+    "revive_auto_enabled": true,
+    "revive_auto_hotkey": "r"
   }
 }

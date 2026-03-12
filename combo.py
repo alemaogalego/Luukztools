@@ -103,10 +103,11 @@ def set_center(x, y):
 def revive(revive_key):
     if revive_key:
         py.moveTo(pos_poke)
-        py.click(button='right')
+        keyboard.press_and_release('ctrl+f1')
+        time.sleep(0.5)
         keyboard.press_and_release(revive_key)
         py.moveTo(pos_poke)
-        py.click(button='right')
+        keyboard.press_and_release('ctrl+f1')
         time.sleep(0.8)
         keyboard.press_and_release("e")
         py.moveTo(pos_center)
