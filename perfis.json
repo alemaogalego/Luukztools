@@ -61,6 +61,18 @@
       201,
       605
     ],
+    "pokeball_check_region": [
+      171,
+      437,
+      187,
+      454
+    ],
+    "shiny_star_region": [
+      40,
+      468,
+      52,
+      482
+    ],
     "game_screen_region": [
       217,
       29,
@@ -68,7 +80,13 @@
       801
     ],
     "revive_auto_enabled": true,
-    "revive_auto_hotkey": "r"
+    "revive_auto_hotkey": "r",
+    "autohunt_capture_hotkey": "capslock",
+    "autohunt_run_hotkey": "x",
+    "autohunt_movepoke_hotkey": "backspace",
+    "autohunt_loot_hotkey": "space",
+    "autohunt_loop": true,
+    "autohunt_current_hunt": "Metang"
   },
   "camerupt": {
     "pokestop_key": "tab",

@@ -71,6 +71,18 @@ battle_check_region = None     # None = não configurado
 BATTLE_REF_FILE = os.path.join("battle", "battle_empty_ref.png")  # imagem de referência "sem inimigos"
 battle_check_enabled = True    # liga/desliga a verificação
 
+# ---- Pokéball check (detecção de pokébola no painel) ----
+pokeball_check_region = None   # (x1, y1, x2, y2) da região da pokébola
+POKEBALL_REF_FILE = os.path.join("battle", "pokeball_ref.png")  # referência da pokébola presente
+capturando_pokeball = False
+captura_pokeball_thread = None
+
+# ---- Shiny star check (detecção de estrela shiny no painel) ----
+shiny_star_region = None       # (x1, y1, x2, y2) da região da estrela
+SHINY_STAR_REF_FILE = os.path.join("battle", "shiny_star_ref.png")
+capturando_shiny_star = False
+captura_shiny_star_thread = None
+
 # ---- Sistema de Captura (gavetas) ----
 # Lista de gavetas: [{"nome": "Pikachu", "ativo": False}, ...]
 captura_gavetas = []
@@ -96,6 +108,18 @@ captura_game_region_thread = None
 running = False
 combo_active = False  # Variável para controlar o estado do botão "Desligado"
 combo_running = False  # True enquanto o combo está executando (H pressionado até finalizar)
+
+# ---- AutoHunt (rota automatizada) ----
+autohunt_route = []           # Lista de passos: [{"x": int, "y": int, "combo": bool, "delay": float}, ...]
+autohunt_recording = False    # True enquanto estamos gravando a rota
+autohunt_running = False      # True enquanto estamos executando a rota
+autohunt_stop_event = threading.Event()  # Para interromper execução
+autohunt_capture_hotkey = "F7"  # Hotkey para capturar coordenada durante gravação
+autohunt_run_hotkey = "F8"     # Hotkey para executar/parar a rota
+autohunt_movepoke_hotkey = ""  # Hotkey para mover o Pokémon
+autohunt_loot_hotkey = ""      # Hotkey para lootar
+autohunt_loop = True           # Se True, repete a rota em loop
+autohunt_current_hunt = ""    # Nome da hunt carregada/salva
 
 # ---- Master switch (bot ligado/desligado) ----
 bot_active = False
@@ -144,8 +168,11 @@ def aplicar_perfil(nome):
     global nightmare_attacks, hunt_attacks, combo_mode_active
     global bot_hotkey
     global battle_check_region
+    global pokeball_check_region
+    global shiny_star_region
     global game_screen_region
     global revive_auto_enabled, revive_auto_hotkey
+    global autohunt_route, autohunt_capture_hotkey, autohunt_run_hotkey, autohunt_movepoke_hotkey, autohunt_loot_hotkey, autohunt_loop, autohunt_current_hunt
 
     perfil = perfis.get(nome, {})
     pokestop_key = perfil.get("pokestop_key", "")
@@ -189,12 +216,43 @@ def aplicar_perfil(nome):
         battle_check_region = tuple(saved_battle)
     else:
         battle_check_region = None
+    # Restaura região da pokéball
+    saved_pokeball = perfil.get("pokeball_check_region", None)
+    if saved_pokeball and len(saved_pokeball) == 4:
+        pokeball_check_region = tuple(saved_pokeball)
+    else:
+        pokeball_check_region = None
+    # Restaura região da estrela shiny
+    saved_shiny_star = perfil.get("shiny_star_region", None)
+    if saved_shiny_star and len(saved_shiny_star) == 4:
+        shiny_star_region = tuple(saved_shiny_star)
+    else:
+        shiny_star_region = None
     # Restaura região da tela do jogo
     saved_game_region = perfil.get("game_screen_region", None)
     if saved_game_region and len(saved_game_region) == 4:
         game_screen_region = tuple(saved_game_region)
     else:
         game_screen_region = None
+    # Restaura AutoHunt
+    autohunt_capture_hotkey = perfil.get("autohunt_capture_hotkey", "F7")
+    autohunt_run_hotkey = perfil.get("autohunt_run_hotkey", "F8")
+    autohunt_movepoke_hotkey = perfil.get("autohunt_movepoke_hotkey", "")
+    autohunt_loot_hotkey = perfil.get("autohunt_loot_hotkey", "")
+    autohunt_loop = perfil.get("autohunt_loop", True)
+    autohunt_current_hunt = perfil.get("autohunt_current_hunt", "")
+    # Carrega rota do arquivo de hunt, se existir
+    autohunt_route = []
+    if autohunt_current_hunt:
+        hunt_file = os.path.join("hunt", autohunt_current_hunt, "route.json")
+        if os.path.exists(hunt_file):
+            try:
+                with open(hunt_file, "r", encoding="utf-8") as f:
+                    hunt_data = json.load(f)
+                autohunt_route = hunt_data.get("route", [])
+                autohunt_loop = hunt_data.get("loop", True)
+            except Exception as e:
+                print(f"⚠ Erro ao carregar hunt '{autohunt_current_hunt}': {e}")
     perfil_ativo = nome
     try:
         if update_overlay_label is not None:
@@ -218,9 +276,17 @@ def salvar_perfil_atual(nome):
         "pos_center": list(combo.pos_center),
         "bot_hotkey": bot_hotkey,
         "battle_check_region": list(battle_check_region) if battle_check_region else None,
+        "pokeball_check_region": list(pokeball_check_region) if pokeball_check_region else None,
+        "shiny_star_region": list(shiny_star_region) if shiny_star_region else None,
         "game_screen_region": list(game_screen_region) if game_screen_region else None,
         "revive_auto_enabled": revive_auto_enabled,
-        "revive_auto_hotkey": revive_auto_hotkey
+        "revive_auto_hotkey": revive_auto_hotkey,
+        "autohunt_capture_hotkey": autohunt_capture_hotkey,
+        "autohunt_run_hotkey": autohunt_run_hotkey,
+        "autohunt_movepoke_hotkey": autohunt_movepoke_hotkey,
+        "autohunt_loot_hotkey": autohunt_loot_hotkey,
+        "autohunt_loop": autohunt_loop,
+        "autohunt_current_hunt": autohunt_current_hunt
     }
     salvar_perfis()
 
@@ -280,6 +346,95 @@ def has_enemies():
         print(f"⚠ Erro battle check: {e}")
         return True  # em caso de erro, assume que tem
 
+def has_pokeball():
+    """
+    Verifica se a pokébola está visível na região configurada.
+    Compara a região atual com a referência salva (pokébola presente).
+    Retorna True se pokébola presente, False se não.
+    Se não configurado, retorna True (assume que tem).
+    """
+    global pokeball_check_region
+    if pokeball_check_region is None:
+        return True  # não configurado, assume que tem
+    ref_path = resource_path(POKEBALL_REF_FILE)
+    if not os.path.exists(ref_path):
+        print(f"⚠ Referência pokéball não encontrada: {ref_path}")
+        return True
+    try:
+        ref_img = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)
+        if ref_img is None:
+            return True
+        x1, y1, x2, y2 = pokeball_check_region
+        with mss.mss() as sct:
+            monitor = {"left": x1, "top": y1, "width": x2 - x1, "height": y2 - y1}
+            raw = sct.grab(monitor)
+            frame = np.array(raw)
+            current = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+        if current.shape != ref_img.shape:
+            current = cv2.resize(current, (ref_img.shape[1], ref_img.shape[0]))
+        diff = cv2.absdiff(current, ref_img)
+        changed = np.count_nonzero(diff > 15)
+        total = diff.size
+        change_pct = changed / total if total > 0 else 0
+        print(f"🔴 Pokéball check: {change_pct:.2%} pixels alterados (<5% = pokébola presente)")
+        if change_pct < 0.05:
+            # Quase idêntico à referência → pokébola PRESENTE
+            return True
+        else:
+            # Diferença grande → pokébola AUSENTE
+            return False
+    except Exception as e:
+        print(f"⚠ Erro pokéball check: {e}")
+        return True  # em caso de erro, assume que tem
+
+def has_shiny_star():
+    """
+    Verifica se a estrela shiny está visível procurando o template
+    dentro de toda a região de battle configurada.
+    Fallback: usa shiny_star_region se battle_check_region não existir.
+    """
+    global shiny_star_region, battle_check_region
+    ref_path = resource_path(SHINY_STAR_REF_FILE)
+    if not os.path.exists(ref_path):
+        return False
+
+    try:
+        template = cv2.imread(ref_path, cv2.IMREAD_GRAYSCALE)
+        if template is None:
+            return False
+
+        search_region = battle_check_region if battle_check_region is not None else shiny_star_region
+        if search_region is None:
+            return False
+
+        x1, y1, x2, y2 = search_region
+        w = x2 - x1
+        h = y2 - y1
+        if w <= 0 or h <= 0:
+            return False
+
+        with mss.mss() as sct:
+            monitor = {"left": x1, "top": y1, "width": w, "height": h}
+            raw = sct.grab(monitor)
+            frame = np.array(raw)
+            current = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+
+        th, tw = template.shape[:2]
+        ch, cw = current.shape[:2]
+        if ch < th or cw < tw:
+            return False
+
+        # Procura a estrela em qualquer posição dentro do battle.
+        result = cv2.matchTemplate(current, template, cv2.TM_CCOEFF_NORMED)
+        _, max_val, _, max_loc = cv2.minMaxLoc(result)
+        threshold = 0.78
+        found = max_val >= threshold
+        print(f"⭐ Shiny check: score={max_val:.3f} (>= {threshold:.2f} = estrela encontrada) em {max_loc}")
+        return found
+    except Exception as e:
+        print(f"⚠ Erro shiny check: {e}")
+        return False
+
 def _should_continue_combo():
     """Wrapper para should_continue que também checa revive_auto_interrupt."""
     if revive_auto_interrupt:
@@ -310,10 +465,10 @@ def start_combo():
             print("⚔ Inimigos detectados! Executando combo...")
             revive_auto_event.clear()  # garante que o event está limpo antes de combar
             if combo_mode_active == "NIGHTMARE":
-                result = combo.combo_nightmare(nightmare_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
+                result = combo.combo_nightmare(nightmare_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event, has_pokeball_fn=has_pokeball)
                 print("Combo Nightmare executado!")
             else:
-                result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event)
+                result = combo.combo_hunt_dynamic(hunt_attacks, should_continue=_should_continue_combo, interrupt_event=revive_auto_event, has_pokeball_fn=has_pokeball)
                 print("Combo Hunt Normal executado!")
             # Se o combo parou por revive_auto_interrupt, não faz revive automático (revive_auto cuida)
             if result is False and revive_auto_interrupt:
@@ -321,7 +476,7 @@ def start_combo():
             elif result is False and revive_key:
                 print("💀 Inimigos eliminados! Usando revive automaticamente...")
                 time.sleep(float(revive_delay) if revive_delay else 0.5)
-                combo.revive(revive_key)
+                combo.smart_revive(revive_key, has_pokeball)
                 print("✅ Revive usado com sucesso!")
             elif result is False and not revive_key:
                 print("💀 Inimigos eliminados! Revive não configurado (sem tecla).")
@@ -368,7 +523,7 @@ def do_revive_auto():
             revive_auto_interrupt = False
             revive_auto_event.clear()
         # Executa o revive INSTANTANEAMENTE — sem delay
-        combo.revive(revive_key)
+        combo.smart_revive(revive_key, has_pokeball)
         print("✅ Revive Auto executado com sucesso!")
     finally:
         _revive_auto_lock.release()
@@ -401,7 +556,7 @@ def _unregister_revive_auto_hotkey():
 
 def toggle_bot():
     """Liga/desliga o bot inteiro (master switch)."""
-    global bot_active, combo_active, captura_modo_ativo, captura_scan_habilitado
+    global bot_active, combo_active, captura_modo_ativo, captura_scan_habilitado, autohunt_running
     bot_active = not bot_active
     if not bot_active:
         # Desativar tudo quando desligar o bot
@@ -422,6 +577,10 @@ def toggle_bot():
             except Exception:
                 pass
             print("Scan de captura desligado (bot desligado)")
+        if autohunt_running:
+            autohunt_running = False
+            autohunt_stop_event.set()
+            print("AutoHunt parado (bot desligado)")
     state = "ON" if bot_active else "OFF"
     print(f"🤖 Bot {state}")
     try:
@@ -535,6 +694,108 @@ def _loop_battle_captura():
                 capturando_battle = False
                 print("⚔ Modo captura BATTLE finalizado.")
 
+def _loop_pokeball_captura():
+    """Loop que espera teclas: B=top-left, N=bottom-right da região da pokébola."""
+    global capturando_pokeball, pokeball_check_region
+    print("🔴 Modo captura POKÉBALL ativado — aperte 'B' no canto top-left da pokébola, 'N' no canto bottom-right.")
+    while capturando_pokeball:
+        key = keyboard.read_event(suppress=True)
+        if not capturando_pokeball:
+            break
+        if key.event_type != keyboard.KEY_DOWN:
+            continue
+
+        if key.name == 'b':
+            x, y = py.position()
+            if pokeball_check_region is None:
+                pokeball_check_region = (x, y, x + 30, y + 30)
+            else:
+                pokeball_check_region = (x, y, pokeball_check_region[2], pokeball_check_region[3])
+            print(f"🔴 Pokéball CANTO 1 (top-left): ({x}, {y})")
+            print(f"  Agora aperte 'N' no canto inferior-direito da pokébola.")
+
+        elif key.name == 'n':
+            x, y = py.position()
+            if pokeball_check_region is None:
+                print("⚠ Aperte 'B' primeiro para marcar o canto superior-esquerdo!")
+            else:
+                pokeball_check_region = (pokeball_check_region[0], pokeball_check_region[1], x, y)
+                print(f"🔴 Pokéball CANTO 2 (bottom-right): ({x}, {y})")
+                print(f"  Região: {pokeball_check_region}")
+                try:
+                    x1, y1, x2, y2 = pokeball_check_region
+                    w = x2 - x1
+                    h = y2 - y1
+                    if w <= 0 or h <= 0:
+                        print(f"⚠ Região inválida! w={w}, h={h}. Verifique B e N.")
+                    else:
+                        with mss.mss() as sct:
+                            monitor = {"left": x1, "top": y1, "width": w, "height": h}
+                            raw = sct.grab(monitor)
+                            frame = np.array(raw)
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                        ref_path = resource_path(POKEBALL_REF_FILE)
+                        os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+                        cv2.imwrite(ref_path, gray)
+                        print(f"📸 Referência pokéball salva: {ref_path} ({w}x{h})")
+                except Exception as e:
+                    print(f"⚠ Erro ao capturar referência pokéball: {e}")
+                salvar_perfil_atual(perfil_ativo)
+                print(f"Pokéball check salvo no perfil '{perfil_ativo}'")
+                capturando_pokeball = False
+                print("🔴 Modo captura POKÉBALL finalizado.")
+
+def _loop_shiny_star_captura():
+    """Loop que espera teclas: B=top-left, N=bottom-right da região da estrela shiny."""
+    global capturando_shiny_star, shiny_star_region
+    print("⭐ Modo captura SHINY ativado — aperte 'B' no canto top-left da estrela, 'N' no canto bottom-right.")
+    while capturando_shiny_star:
+        key = keyboard.read_event(suppress=True)
+        if not capturando_shiny_star:
+            break
+        if key.event_type != keyboard.KEY_DOWN:
+            continue
+
+        if key.name == 'b':
+            x, y = py.position()
+            if shiny_star_region is None:
+                shiny_star_region = (x, y, x + 24, y + 24)
+            else:
+                shiny_star_region = (x, y, shiny_star_region[2], shiny_star_region[3])
+            print(f"⭐ Shiny CANTO 1 (top-left): ({x}, {y})")
+            print("  Agora aperte 'N' no canto inferior-direito da estrela.")
+
+        elif key.name == 'n':
+            x, y = py.position()
+            if shiny_star_region is None:
+                print("⚠ Aperte 'B' primeiro para marcar o canto superior-esquerdo!")
+            else:
+                shiny_star_region = (shiny_star_region[0], shiny_star_region[1], x, y)
+                print(f"⭐ Shiny CANTO 2 (bottom-right): ({x}, {y})")
+                print(f"  Região: {shiny_star_region}")
+                try:
+                    x1, y1, x2, y2 = shiny_star_region
+                    w = x2 - x1
+                    h = y2 - y1
+                    if w <= 0 or h <= 0:
+                        print(f"⚠ Região inválida! w={w}, h={h}. Verifique B e N.")
+                    else:
+                        with mss.mss() as sct:
+                            monitor = {"left": x1, "top": y1, "width": w, "height": h}
+                            raw = sct.grab(monitor)
+                            frame = np.array(raw)
+                            gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+                        ref_path = resource_path(SHINY_STAR_REF_FILE)
+                        os.makedirs(os.path.dirname(ref_path), exist_ok=True)
+                        cv2.imwrite(ref_path, gray)
+                        print(f"📸 Referência estrela shiny salva: {ref_path} ({w}x{h})")
+                except Exception as e:
+                    print(f"⚠ Erro ao capturar referência shiny: {e}")
+                salvar_perfil_atual(perfil_ativo)
+                print(f"Shiny check salvo no perfil '{perfil_ativo}'")
+                capturando_shiny_star = False
+                print("⭐ Modo captura SHINY finalizado.")
+
 def _loop_game_region_captura():
     """Loop que espera teclas: V=top-left, M=bottom-right da tela do jogo."""
     global capturando_game_region, game_screen_region
@@ -577,6 +838,16 @@ def _loop_game_region_captura():
 
 def main():
     global button_combo, button_activation, perfil_label, lbl
+
+    # Tornar o processo DPI-aware para coordenadas consistentes entre pyautogui e tkinter
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
     carregar_perfis()
     aplicar_perfil(perfil_ativo)
 
@@ -654,6 +925,8 @@ def main():
     # combo_setup_frame NÃO é packed inicialmente
     capture_setup_frame = tk.Frame(screen, bg="#121214")
     # capture_setup_frame NÃO é packed inicialmente
+    autohunt_setup_frame = tk.Frame(screen, bg="#121214")
+    # autohunt_setup_frame NÃO é packed inicialmente
 
     # ── Profile Header ──
     perfil_header = tk.Frame(main_content_frame, bg="#27272a")
@@ -1218,6 +1491,196 @@ def main():
                 battle_status_lbl.config(fg=_RED)
         battle_status_var.trace_add("write", _update_battle_status_color)
         _update_battle_status_color()
+
+        # ═══ SEÇÃO 3.5: CONFIGURAÇÃO POKÉBALL ═══
+        _cfg_section_label(content, "🔴  CONFIGURAÇÃO POKÉBALL", _ORANGE)
+
+        pokeball_card = tk.Frame(content, bg=_CARD, highlightbackground=_BORDER,
+                                 highlightthickness=1)
+        pokeball_card.pack(fill="x", pady=(6, 0))
+
+        # Info box pokeball
+        pb_info_frame = tk.Frame(pokeball_card, bg="#0a0a0c", highlightbackground=_BORDER,
+                                 highlightthickness=1)
+        pb_info_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        pb_info_inner = tk.Frame(pb_info_frame, bg="#0a0a0c")
+        pb_info_inner.pack(fill="x", padx=8, pady=8)
+        tk.Label(pb_info_inner, text="🔴", font=("Segoe UI Emoji", 11),
+                 bg="#0a0a0c", fg=_ORANGE).pack(side="left", padx=(0, 8))
+        tk.Label(pb_info_inner,
+                 text="COM a pokébola visível, clique ATIVAR.\nAperte 'B' no canto top-left da pokébola\ne 'N' no canto bottom-right.",
+                 font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
+                 justify="left").pack(side="left")
+
+        pokeball_status_var = tk.StringVar(value="NÃO CONFIGURADO" if pokeball_check_region is None else "CONFIGURADO ✅")
+        _config_widgets["pokeball_status_var"] = pokeball_status_var
+
+        def _start_pokeball_captura():
+            global capturando_pokeball, captura_pokeball_thread
+            if capturando_pokeball:
+                return
+            capturando_pokeball = True
+            pokeball_status_var.set("AGUARDANDO B + N...")
+            captura_pokeball_thread = threading.Thread(target=_loop_pokeball_captura_wrapper, daemon=True)
+            captura_pokeball_thread.start()
+
+        def _loop_pokeball_captura_wrapper():
+            _loop_pokeball_captura()
+            try:
+                if pokeball_check_region is not None:
+                    pokeball_status_var.set("CONFIGURADO ✅")
+                else:
+                    pokeball_status_var.set("NÃO CONFIGURADO")
+            except Exception:
+                pass
+
+        def _stop_pokeball_captura():
+            global capturando_pokeball
+            if not capturando_pokeball:
+                return
+            capturando_pokeball = False
+            pokeball_status_var.set("CONFIGURADO ✅" if pokeball_check_region is not None else "NÃO CONFIGURADO")
+            print("🔴 Modo captura POKÉBALL desativado.")
+
+        btn_pokeball_ativar = tk.Button(
+            pokeball_card, text="🔴  ATIVAR CAPTURA (B=TOP-LEFT, N=BOTTOM-RIGHT)",
+            font=("Consolas", 8, "bold"), bg="#27272a", fg="white",
+            activebackground=_ORANGE, activeforeground="black",
+            bd=0, pady=8, cursor="hand2",
+            command=_start_pokeball_captura
+        )
+        btn_pokeball_ativar.pack(fill="x", padx=10, pady=(8, 4))
+
+        _pb_des_frame = tk.Frame(pokeball_card, bg=_ORANGE, bd=0, highlightthickness=0)
+        _pb_des_frame.pack(fill="x", padx=10, pady=(0, 8))
+        btn_pokeball_desativar = tk.Button(
+            _pb_des_frame, text="⚡  DESATIVAR CAPTURA POKÉBALL",
+            font=("Consolas", 9, "bold"), bg="#0a0a0c", fg=_ORANGE,
+            activebackground="#1a0a05",
+            bd=0, relief="flat", pady=6, cursor="hand2",
+            highlightthickness=0,
+            command=_stop_pokeball_captura
+        )
+        btn_pokeball_desativar.pack(fill="both", expand=True, padx=2, pady=2)
+
+        # Status label pokeball
+        pb_sf = tk.Frame(pokeball_card, bg=_CARD)
+        pb_sf.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Frame(pb_sf, bg=_BORDER, height=1).pack(fill="x", pady=(0, 6))
+        pbsf = tk.Frame(pb_sf, bg=_CARD)
+        pbsf.pack()
+        tk.Label(pbsf, text="STATUS:", font=("Consolas", 8),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 6))
+        pokeball_status_lbl = tk.Label(pbsf, textvariable=pokeball_status_var,
+                                       font=("Consolas", 10, "bold italic"),
+                                       bg=_CARD, fg=_ORANGE)
+        pokeball_status_lbl.pack(side="left")
+
+        def _update_pokeball_status_color(*_):
+            val = pokeball_status_var.get()
+            if "CONFIGURADO" in val and "NÃO" not in val:
+                pokeball_status_lbl.config(fg=_GREEN)
+            elif "AGUARDANDO" in val:
+                pokeball_status_lbl.config(fg=_ORANGE)
+            else:
+                pokeball_status_lbl.config(fg=_RED)
+        pokeball_status_var.trace_add("write", _update_pokeball_status_color)
+        _update_pokeball_status_color()
+
+        # ═══ SEÇÃO 3.6: CONFIGURAÇÃO SHINY ⭐ ═══
+        _cfg_section_label(content, "⭐  CONFIGURAÇÃO SHINY", _ORANGE)
+
+        shiny_card = tk.Frame(content, bg=_CARD, highlightbackground=_BORDER,
+                              highlightthickness=1)
+        shiny_card.pack(fill="x", pady=(6, 0))
+
+        shiny_info_frame = tk.Frame(shiny_card, bg="#0a0a0c", highlightbackground=_BORDER,
+                                    highlightthickness=1)
+        shiny_info_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+        shiny_info_inner = tk.Frame(shiny_info_frame, bg="#0a0a0c")
+        shiny_info_inner.pack(fill="x", padx=8, pady=8)
+        tk.Label(shiny_info_inner, text="⭐", font=("Segoe UI Emoji", 11),
+                 bg="#0a0a0c", fg=_ORANGE).pack(side="left", padx=(0, 8))
+        tk.Label(shiny_info_inner,
+                 text="COM a estrela visível no battle, clique ATIVAR.\nAperte 'B' no canto top-left da estrela\ne 'N' no canto bottom-right.",
+                 font=("Consolas", 8), bg="#0a0a0c", fg="#a1a1aa",
+                 justify="left").pack(side="left")
+
+        shiny_status_var = tk.StringVar(value="NÃO CONFIGURADO" if shiny_star_region is None else "CONFIGURADO ✅")
+        _config_widgets["shiny_status_var"] = shiny_status_var
+
+        def _start_shiny_captura():
+            global capturando_shiny_star, captura_shiny_star_thread
+            if capturando_shiny_star:
+                return
+            capturando_shiny_star = True
+            shiny_status_var.set("AGUARDANDO B + N...")
+            captura_shiny_star_thread = threading.Thread(target=_loop_shiny_captura_wrapper, daemon=True)
+            captura_shiny_star_thread.start()
+
+        def _loop_shiny_captura_wrapper():
+            _loop_shiny_star_captura()
+            try:
+                if shiny_star_region is not None:
+                    shiny_status_var.set("CONFIGURADO ✅")
+                else:
+                    shiny_status_var.set("NÃO CONFIGURADO")
+            except Exception:
+                pass
+
+        def _stop_shiny_captura():
+            global capturando_shiny_star
+            if not capturando_shiny_star:
+                return
+            capturando_shiny_star = False
+            shiny_status_var.set("CONFIGURADO ✅" if shiny_star_region is not None else "NÃO CONFIGURADO")
+            print("⭐ Modo captura SHINY desativado.")
+
+        btn_shiny_ativar = tk.Button(
+            shiny_card, text="⭐  ATIVAR CAPTURA (B=TOP-LEFT, N=BOTTOM-RIGHT)",
+            font=("Consolas", 8, "bold"), bg="#27272a", fg="white",
+            activebackground=_ORANGE, activeforeground="black",
+            bd=0, pady=8, cursor="hand2",
+            command=_start_shiny_captura
+        )
+        btn_shiny_ativar.pack(fill="x", padx=10, pady=(8, 4))
+
+        _shiny_des_frame = tk.Frame(shiny_card, bg=_ORANGE, bd=0, highlightthickness=0)
+        _shiny_des_frame.pack(fill="x", padx=10, pady=(0, 8))
+        btn_shiny_desativar = tk.Button(
+            _shiny_des_frame, text="⚡  DESATIVAR CAPTURA SHINY",
+            font=("Consolas", 9, "bold"), bg="#0a0a0c", fg=_ORANGE,
+            activebackground="#1a0a05",
+            bd=0, relief="flat", pady=6, cursor="hand2",
+            highlightthickness=0,
+            command=_stop_shiny_captura
+        )
+        btn_shiny_desativar.pack(fill="both", expand=True, padx=2, pady=2)
+
+        shiny_sf = tk.Frame(shiny_card, bg=_CARD)
+        shiny_sf.pack(fill="x", padx=10, pady=(0, 10))
+        tk.Frame(shiny_sf, bg=_BORDER, height=1).pack(fill="x", pady=(0, 6))
+        shsf = tk.Frame(shiny_sf, bg=_CARD)
+        shsf.pack()
+        tk.Label(shsf, text="STATUS:", font=("Consolas", 8),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 6))
+        shiny_status_lbl = tk.Label(shsf, textvariable=shiny_status_var,
+                                    font=("Consolas", 10, "bold italic"),
+                                    bg=_CARD, fg=_ORANGE)
+        shiny_status_lbl.pack(side="left")
+
+        def _update_shiny_status_color(*_):
+            val = shiny_status_var.get()
+            if "CONFIGURADO" in val and "NÃO" not in val:
+                shiny_status_lbl.config(fg=_GREEN)
+            elif "AGUARDANDO" in val:
+                shiny_status_lbl.config(fg=_ORANGE)
+            else:
+                shiny_status_lbl.config(fg=_RED)
+        shiny_status_var.trace_add("write", _update_shiny_status_color)
+        _update_shiny_status_color()
 
         # ═══ SEÇÃO 4: GAME REGION (região da tela do jogo) ═══
         _cfg_section_label(content, "🎮  REGIÃO DA TELA DO JOGO", "#00d4ff")
@@ -2643,6 +3106,20 @@ def main():
 
     # Registra hotkey global do bot
     keyboard.add_hotkey(bot_hotkey, toggle_bot, suppress=False)
+
+    # Registra hotkey global do AutoHunt
+    _autohunt_run_hook = [None]  # Guarda referência do hook para poder trocar
+
+    def _register_autohunt_run_hotkey():
+        """Registra/re-registra a hotkey global de execução do AutoHunt."""
+        if _autohunt_run_hook[0] is not None:
+            try:
+                keyboard.remove_hotkey(_autohunt_run_hook[0])
+            except Exception:
+                pass
+        if autohunt_run_hotkey:
+            _autohunt_run_hook[0] = keyboard.add_hotkey(
+                autohunt_run_hotkey, _toggle_autohunt_from_hotkey, suppress=False)
 
     # Registra hotkey Revive Auto (se configurada)
     _register_revive_auto_hotkey()
@@ -4186,6 +4663,1091 @@ def main():
     )
     btn_captura_main_toggle.pack(fill="x", padx=4, pady=(8, 2))
 
+    # ── AUTOHUNT BOX (full width) ──
+    autohunt_card = tk.Frame(action_panel, bg="#1a1a1e", padx=10, pady=8,
+                             highlightbackground="#a855f7", highlightthickness=1)
+    autohunt_card.pack(fill="x", pady=(0, 4))
+
+    autohunt_header = tk.Frame(autohunt_card, bg="#1a1a1e")
+    autohunt_header.pack(fill="x")
+    autohunt_title_frame = tk.Frame(autohunt_header, bg="#1a1a1e")
+    autohunt_title_frame.pack(side="left")
+    tk.Label(autohunt_title_frame, text="🗺", font=("Segoe UI Emoji", 13),
+             bg="#1a1a1e", fg="#a855f7").pack(side="left", padx=(0, 6))
+    autohunt_title_lbl = tk.Label(autohunt_title_frame, text="AUTOHUNT",
+             font=("Consolas", 11, "bold italic"),
+             bg="#1a1a1e", fg="#a855f7")
+    autohunt_title_lbl.pack(side="left")
+    btn_autohunt_cfg = tk.Button(autohunt_header, text="⚙", font=("Segoe UI Emoji", 12),
+                                 bg="#1a1a1e", fg="#52525b", activebackground="#27272a",
+                                 activeforeground="white", bd=0, cursor="hand2",
+                                 command=lambda: open_autohunt_setup())
+    btn_autohunt_cfg.pack(side="right")
+
+    btn_autohunt_main_toggle = tk.Button(
+        autohunt_card,
+        text="●  DESLIGADO",
+        font=("Consolas", 10, "bold"),
+        bg="#27272a", fg="#52525b",
+        activebackground="#18181b",
+        bd=0, pady=8, cursor="hand2",
+        command=lambda: toggle_autohunt_execution(), relief="flat"
+    )
+    btn_autohunt_main_toggle.pack(fill="x", padx=4, pady=(8, 2))
+
+    # ═══════════════════════════════════════════════════════
+    # 🗺 SETUP AUTOHUNT — tela inline
+    # ═══════════════════════════════════════════════════════
+    _autohunt_setup_built = [False]
+    _autohunt_setup_widgets = {}
+    _autohunt_route_rows = []
+    _autohunt_hooks = []  # keyboard hooks ativos
+
+    def _voltar_do_autohunt_setup():
+        """Volta da tela de autohunt para a tela principal."""
+        _stop_autohunt_recording()
+        autohunt_setup_frame.pack_forget()
+        main_content_frame.pack(fill="both", expand=True)
+
+    def _stop_autohunt_recording():
+        """Para a gravação se estiver ativa."""
+        global autohunt_recording
+        if autohunt_recording:
+            autohunt_recording = False
+            for h in _autohunt_hooks:
+                try:
+                    keyboard.unhook(h)
+                except Exception:
+                    pass
+            _autohunt_hooks.clear()
+            try:
+                _autohunt_setup_widgets["btn_record"].config(
+                    text="⏺  INICIAR GRAVAÇÃO", bg="#27272a", fg="white")
+                _autohunt_setup_widgets["record_status_var"].set("PARADO")
+            except Exception:
+                pass
+            print("🗺 Gravação AutoHunt parada.")
+
+    def _start_autohunt_recording():
+        """Inicia a gravação — captura coordenadas via hotkey."""
+        global autohunt_recording
+        if autohunt_recording:
+            _stop_autohunt_recording()
+            return
+        autohunt_recording = True
+        capture_key = _autohunt_setup_widgets.get("entry_capture_hotkey")
+        cap_key = capture_key.get().strip() if capture_key else autohunt_capture_hotkey
+        if not cap_key:
+            cap_key = "F7"
+
+        def _on_capture_key(event):
+            if event.event_type == keyboard.KEY_DOWN and autohunt_recording:
+                x, y = py.position()
+                # Agenda leitura de widgets e salvamento no main thread do tkinter
+                def _do_capture():
+                    combo_on = _autohunt_setup_widgets.get("combo_var", tk.BooleanVar()).get()
+                    loot_on = _autohunt_setup_widgets.get("loot_var", tk.BooleanVar()).get()
+                    delay_entry = _autohunt_setup_widgets.get("entry_delay")
+                    delay_val = 0.5
+                    if delay_entry:
+                        try:
+                            delay_val = float(delay_entry.get())
+                        except ValueError:
+                            delay_val = 0.5
+                    step = {"x": x, "y": y, "combo": combo_on, "loot": loot_on, "delay": delay_val}
+                    autohunt_route.append(step)
+                    _add_route_row_ui(step)
+                    _salvar_autohunt()
+                    print(f"🗺 Coordenada capturada: ({x}, {y}) Combo={combo_on} Loot={loot_on} Delay={delay_val}s")
+                root.after(0, _do_capture)
+
+        hook = keyboard.on_press_key(cap_key.lower(), _on_capture_key)
+        _autohunt_hooks.append(hook)
+
+        try:
+            _autohunt_setup_widgets["btn_record"].config(
+                text="⏹  PARAR GRAVAÇÃO", bg="#ef4444", fg="white")
+            _autohunt_setup_widgets["record_status_var"].set("GRAVANDO...")
+        except Exception:
+            pass
+        print(f"🗺 Gravação AutoHunt iniciada! Pressione '{cap_key}' para capturar coordenadas.")
+
+    def _add_route_row_ui(step, idx=None):
+        """Adiciona uma linha visual na lista de rota."""
+        route_frame = _autohunt_setup_widgets.get("route_list_frame")
+        if not route_frame:
+            return
+        if idx is None:
+            idx = len(_autohunt_route_rows)
+
+        row_bg = "#18181b"
+        row_frame = tk.Frame(route_frame, bg=row_bg,
+                             highlightbackground="#27272a", highlightthickness=1)
+        row_frame.pack(fill="x", pady=2, padx=2)
+
+        # Barra lateral colorida
+        accent = "#a855f7" if not step.get("delay_only") else "#eab308"
+        bar = tk.Frame(row_frame, bg=accent, width=3)
+        bar.pack(side="left", fill="y")
+
+        inner = tk.Frame(row_frame, bg=row_bg)
+        inner.pack(side="left", fill="x", expand=True, padx=6, pady=4)
+
+        # Usa grid para alinhar colunas
+        inner.columnconfigure(1, weight=1)  # coordenada expande
+
+        # Ordem
+        lbl_num = tk.Label(inner, text=str(idx + 1), font=("Consolas", 9, "bold"),
+                           bg=row_bg, fg="#52525b", width=3, anchor="w")
+        lbl_num.grid(row=0, column=0, padx=(0, 4))
+
+        delay_entry = None
+        combo_var = None
+        loot_var = None
+
+        if step.get("delay_only"):
+            # É um delay puro
+            tk.Label(inner, text="⏱ DELAY", font=("Consolas", 8, "bold"),
+                     bg=row_bg, fg="#eab308").grid(row=0, column=1, sticky="w")
+            delay_entry = tk.Entry(inner, width=5, font=("Consolas", 9, "bold"),
+                                   bg="#0a0a0c", fg="#22d3ee", insertbackground="#22d3ee",
+                                   bd=1, relief="solid", justify="center")
+            delay_entry.insert(0, str(step.get("delay", 1.0)))
+            delay_entry.grid(row=0, column=2)
+        else:
+            # Coordenada
+            coord_text = f"({step['x']}, {step['y']})"
+            tk.Label(inner, text=coord_text, font=("Consolas", 8, "bold"),
+                     bg=row_bg, fg="#d4d4d8", anchor="w").grid(row=0, column=1, sticky="w")
+
+            # Combo toggle
+            combo_var = tk.BooleanVar(value=step.get("combo", False))
+            combo_text = tk.StringVar(value="⚔ SIM" if step.get("combo", False) else "⚔ NÃO")
+
+            def _toggle_combo(cv=combo_var, ct=combo_text, btn_ref=[None]):
+                val = not cv.get()
+                cv.set(val)
+                ct.set("⚔ SIM" if val else "⚔ NÃO")
+                if btn_ref[0]:
+                    btn_ref[0].config(bg="#16a34a" if val else "#27272a",
+                                      fg="white" if val else "#52525b")
+
+            btn_combo_toggle = tk.Button(inner, textvariable=combo_text,
+                                         font=("Consolas", 7, "bold"),
+                                         bg="#16a34a" if step.get("combo") else "#27272a",
+                                         fg="white" if step.get("combo") else "#52525b",
+                                         bd=0, width=6, pady=1, cursor="hand2",
+                                         command=_toggle_combo)
+            btn_combo_toggle.config(command=lambda cv=combo_var, ct=combo_text, br=[btn_combo_toggle]: _toggle_combo(cv, ct, br))
+            btn_combo_toggle.grid(row=0, column=2, padx=(4, 2))
+
+            # Loot toggle
+            loot_var = tk.BooleanVar(value=step.get("loot", False))
+            loot_text = tk.StringVar(value="💰 SIM" if step.get("loot", False) else "💰 NÃO")
+
+            def _toggle_loot(lv=loot_var, lt=loot_text, btn_ref=[None]):
+                val = not lv.get()
+                lv.set(val)
+                lt.set("💰 SIM" if val else "💰 NÃO")
+                if btn_ref[0]:
+                    btn_ref[0].config(bg="#eab308" if val else "#27272a",
+                                      fg="white" if val else "#52525b")
+
+            btn_loot_toggle = tk.Button(inner, textvariable=loot_text,
+                                        font=("Consolas", 7, "bold"),
+                                        bg="#eab308" if step.get("loot") else "#27272a",
+                                        fg="white" if step.get("loot") else "#52525b",
+                                        bd=0, width=6, pady=1, cursor="hand2",
+                                        command=_toggle_loot)
+            btn_loot_toggle.config(command=lambda lv=loot_var, lt=loot_text, br=[btn_loot_toggle]: _toggle_loot(lv, lt, br))
+            btn_loot_toggle.grid(row=0, column=3, padx=(2, 2))
+
+            # Delay
+            delay_entry = tk.Entry(inner, width=4, font=("Consolas", 9, "bold"),
+                                   bg="#0a0a0c", fg="#22d3ee", insertbackground="#22d3ee",
+                                   bd=1, relief="solid", justify="center")
+            delay_entry.insert(0, str(step.get("delay", 0.5)))
+            delay_entry.grid(row=0, column=4, padx=(4, 0))
+
+        row_data = {
+            "frame": row_frame, "label": lbl_num,
+            "delay_entry": delay_entry,
+            "combo_var": combo_var,
+            "loot_var": loot_var,
+            "step": step, "delay_only": step.get("delay_only", False)
+        }
+
+        def _remove_row(rd=row_data):
+            if rd in _autohunt_route_rows:
+                _autohunt_route_rows.remove(rd)
+            rd["frame"].destroy()
+            _renumber_route_rows()
+            _collect_route_from_ui()
+            _salvar_autohunt()
+
+        btn_del = tk.Button(inner, text="🗑", font=("Segoe UI Emoji", 9),
+                            bg=row_bg, fg="#3f3f46", bd=0, cursor="hand2",
+                            activebackground=row_bg, activeforeground="#ef4444",
+                            command=_remove_row)
+        btn_del.grid(row=0, column=5, padx=(4, 0))
+
+        _autohunt_route_rows.append(row_data)
+
+    def _renumber_route_rows():
+        for i, r in enumerate(_autohunt_route_rows):
+            r["label"].config(text=str(i + 1))
+
+    def _clear_route_ui():
+        """Limpa todas as linhas da UI de rota."""
+        for r in list(_autohunt_route_rows):
+            r["frame"].destroy()
+        _autohunt_route_rows.clear()
+
+    def _collect_route_from_ui():
+        """Coleta a rota atualizada a partir da UI."""
+        global autohunt_route
+        autohunt_route = []
+        for r in _autohunt_route_rows:
+            delay_val = 0.5
+            if r.get("delay_entry"):
+                try:
+                    delay_val = float(r["delay_entry"].get())
+                except ValueError:
+                    delay_val = 0.5
+            if r.get("delay_only"):
+                autohunt_route.append({"x": 0, "y": 0, "combo": False, "loot": False, "delay": delay_val, "delay_only": True})
+            else:
+                combo_on = r["combo_var"].get() if r.get("combo_var") else False
+                loot_on = r["loot_var"].get() if r.get("loot_var") else False
+                autohunt_route.append({
+                    "x": r["step"]["x"], "y": r["step"]["y"],
+                    "combo": combo_on, "loot": loot_on, "delay": delay_val
+                })
+
+    def _salvar_autohunt():
+        """Salva as configurações do AutoHunt em hunt/<nome>/route.json."""
+        global autohunt_loop, autohunt_current_hunt
+        w = _autohunt_setup_widgets
+        _sync_hotkeys_from_ui()
+        autohunt_loop = w.get("loop_var", tk.BooleanVar(value=True)).get()
+        _collect_route_from_ui()
+        # Pega nome da hunt
+        hunt_entry = w.get("entry_hunt_name")
+        hunt_name = hunt_entry.get().strip() if hunt_entry else autohunt_current_hunt
+        if not hunt_name:
+            print("⚠ Digite um nome para a hunt antes de salvar!")
+            return
+        autohunt_current_hunt = hunt_name
+        # Cria pasta e salva
+        hunt_dir = os.path.join("hunt", hunt_name)
+        os.makedirs(hunt_dir, exist_ok=True)
+        hunt_data = {
+            "route": autohunt_route,
+            "loop": autohunt_loop,
+            "capture_hotkey": autohunt_capture_hotkey,
+            "run_hotkey": autohunt_run_hotkey,
+            "movepoke_hotkey": autohunt_movepoke_hotkey,
+            "loot_hotkey": autohunt_loot_hotkey
+        }
+        hunt_file = os.path.join(hunt_dir, "route.json")
+        with open(hunt_file, "w", encoding="utf-8") as f:
+            json.dump(hunt_data, f, indent=2, ensure_ascii=False)
+        # Salva referencia no perfil
+        salvar_perfil_atual(perfil_ativo)
+        # Re-registra hotkey de execução
+        _register_autohunt_run_hotkey()
+        # Atualiza labels
+        hunt_lbl = w.get("hunt_loaded_label")
+        if hunt_lbl:
+            hunt_lbl.config(text=f"🗺 {hunt_name}", fg="#10b981")
+        hunt_steps_lbl = w.get("hunt_steps_label")
+        if hunt_steps_lbl:
+            hunt_steps_lbl.config(text=f"{len(autohunt_route)} passos na rota", fg="#52525b")
+        print(f"✅ Hunt '{hunt_name}' salva! {len(autohunt_route)} passos na rota.")
+
+    def _do_click_at(x, y, step_idx, stop_event, running_flag):
+        """Move mouse para (x,y) e clica com verificação de posição."""
+        _MAX_RETRIES = 3
+        _POS_TOLERANCE = 5
+        click_ok = False
+        for _attempt in range(_MAX_RETRIES):
+            if stop_event.is_set() or not running_flag:
+                return
+            ctypes.windll.user32.SetCursorPos(int(x), int(y))
+            time.sleep(0.05)
+            class _POINT(ctypes.Structure):
+                _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+            pt = _POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            dx = abs(pt.x - int(x))
+            dy = abs(pt.y - int(y))
+            if dx <= _POS_TOLERANCE and dy <= _POS_TOLERANCE:
+                ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+                ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+                click_ok = True
+                break
+            else:
+                print(f"  ⚠ Cursor desviou para ({pt.x}, {pt.y}), tentativa {_attempt+1}/{_MAX_RETRIES}")
+                time.sleep(0.1)
+        if not click_ok and running_flag and not stop_event.is_set():
+            ctypes.windll.user32.SetCursorPos(int(x), int(y))
+            time.sleep(0.03)
+            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+            print(f"  ⚠ Click forçado no passo {step_idx+1} após {_MAX_RETRIES} tentativas")
+
+    def _sync_hotkeys_from_ui():
+        """Lê as hotkeys dos widgets da UI para as variáveis globais."""
+        global autohunt_capture_hotkey, autohunt_run_hotkey, autohunt_movepoke_hotkey, autohunt_loot_hotkey
+        w = _autohunt_setup_widgets
+        autohunt_capture_hotkey = (w.get("entry_capture_hotkey").get().strip() or "F7") if w.get("entry_capture_hotkey") else autohunt_capture_hotkey
+        autohunt_run_hotkey = (w.get("entry_run_hotkey").get().strip() or "F8") if w.get("entry_run_hotkey") else autohunt_run_hotkey
+        autohunt_movepoke_hotkey = (w.get("entry_movepoke_hotkey").get().strip()) if w.get("entry_movepoke_hotkey") else autohunt_movepoke_hotkey
+        autohunt_loot_hotkey = (w.get("entry_loot_hotkey").get().strip()) if w.get("entry_loot_hotkey") else autohunt_loot_hotkey
+
+    def _execute_autohunt():
+        """Thread principal de execução da rota."""
+        global autohunt_running
+        if not bot_active:
+            print("⚠ Bot desligado! AutoHunt não executa.")
+            autohunt_running = False
+            return
+        if not autohunt_route:
+            print("⚠ Rota vazia! Adicione coordenadas primeiro.")
+            autohunt_running = False
+            return
+        autohunt_stop_event.clear()
+        print(f"🗺 AutoHunt iniciado! {len(autohunt_route)} passos.")
+
+        def _handle_shiny_at_checkpoint(step_idx):
+            """Se detectar estrela shiny, para no checkpoint e executa combo até sumir."""
+            if autohunt_stop_event.is_set() or not autohunt_running:
+                return
+            if not has_shiny_star():
+                return
+            if not combo_active:
+                print("⭐ Shiny detectado, mas o Combo está desligado. Ligue o Combo para caçar shiny automaticamente.")
+                return
+
+            print(f"⭐ Shiny detectado no passo {step_idx+1}! Parando no checkpoint e iniciando combo H até morrer...")
+            while autohunt_running and not autohunt_stop_event.is_set() and has_shiny_star():
+                print("⭐ Shiny ainda vivo - executando combo...")
+                start_combo()
+                if autohunt_stop_event.wait(0.25):
+                    return
+
+            if not has_shiny_star():
+                print("✅ Shiny eliminado! Continuando para o próximo checkpoint.")
+
+        try:
+            while autohunt_running and not autohunt_stop_event.is_set():
+                for i, step in enumerate(autohunt_route):
+                    if autohunt_stop_event.is_set() or not autohunt_running:
+                        break
+                    if step.get("delay_only"):
+                        print(f"  ⏱ Passo {i+1}: Delay {step['delay']}s")
+                        if autohunt_stop_event.wait(step.get("delay", 1.0)):
+                            break
+                        continue
+
+                    # Move o mouse para a coordenada
+                    x, y = step["x"], step["y"]
+                    print(f"  🗺 Passo {i+1}: Movendo para ({x}, {y})")
+
+                    if step.get("combo"):
+                        # ── COMBO: Move mouse → aperta MovePoke hotkey → delay → combo H ──
+                        ctypes.windll.user32.SetCursorPos(int(x), int(y))
+                        time.sleep(0.05)
+                        if autohunt_movepoke_hotkey:
+                            print(f"  🎮 Apertando MovePoke ({autohunt_movepoke_hotkey}) no passo {i+1}")
+                            keyboard.press_and_release(autohunt_movepoke_hotkey)
+                        else:
+                            ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)
+                            ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)
+
+                        delay = step.get("delay", 0.5)
+                        if delay > 0:
+                            if autohunt_stop_event.wait(delay):
+                                break
+
+                        if autohunt_stop_event.is_set() or not autohunt_running:
+                            break
+
+                        print(f"  ⚔ Executando combo no passo {i+1}...")
+                        start_combo()
+
+                        if autohunt_stop_event.is_set() or not autohunt_running:
+                            break
+                        _handle_shiny_at_checkpoint(i)
+
+                    elif step.get("loot"):
+                        # ── LOOT: Clica na coordenada → delay → aperta Loot hotkey → 1.0s ──
+                        _do_click_at(x, y, i, autohunt_stop_event, autohunt_running)
+
+                        delay = step.get("delay", 0.5)
+                        if delay > 0:
+                            if autohunt_stop_event.wait(delay):
+                                break
+
+                        if autohunt_stop_event.is_set() or not autohunt_running:
+                            break
+
+                        if autohunt_loot_hotkey:
+                            print(f"  💰 Apertando Loot ({autohunt_loot_hotkey}) no passo {i+1}")
+                            keyboard.press_and_release(autohunt_loot_hotkey)
+                            if autohunt_stop_event.wait(1.0):
+                                break
+                        else:
+                            print(f"  ⚠ Loot hotkey não configurada no passo {i+1}")
+
+                        if autohunt_stop_event.is_set() or not autohunt_running:
+                            break
+                        _handle_shiny_at_checkpoint(i)
+
+                    else:
+                        # ── NORMAL: Move mouse → clica → delay ──
+                        _do_click_at(x, y, i, autohunt_stop_event, autohunt_running)
+
+                        delay = step.get("delay", 0.5)
+                        if delay > 0:
+                            if autohunt_stop_event.wait(delay):
+                                break
+
+                        if autohunt_stop_event.is_set() or not autohunt_running:
+                            break
+                        _handle_shiny_at_checkpoint(i)
+
+                if not autohunt_loop:
+                    break
+                if autohunt_running and not autohunt_stop_event.is_set():
+                    print("🗺 Loop da rota reiniciando...")
+        except Exception as e:
+            print(f"⚠ Erro AutoHunt: {e}")
+        autohunt_running = False
+        try:
+            btn_autohunt_main_toggle.config(text="●  DESLIGADO", bg="#27272a", fg="#52525b")
+        except Exception:
+            pass
+        print("🗺 AutoHunt finalizado.")
+
+    def _toggle_autohunt_from_hotkey():
+        """Chamado pela hotkey global — agenda no main thread do tkinter."""
+        root.after(0, toggle_autohunt_execution)
+
+    def toggle_autohunt_execution():
+        """Liga/desliga a execução da rota AutoHunt."""
+        global autohunt_running
+        if not bot_active:
+            print("⚠ Bot desligado! Ligue primeiro com a hotkey global.")
+            return
+        if autohunt_running:
+            autohunt_running = False
+            autohunt_stop_event.set()
+            btn_autohunt_main_toggle.config(text="●  DESLIGADO", bg="#27272a", fg="#52525b")
+            print("🗺 AutoHunt parado.")
+        else:
+            _collect_route_from_ui()
+            _sync_hotkeys_from_ui()
+            if not autohunt_route:
+                print("⚠ Rota vazia! Configure primeiro no painel AutoHunt.")
+                return
+            autohunt_running = True
+            autohunt_stop_event.clear()
+            btn_autohunt_main_toggle.config(text="●  EXECUTANDO", bg="#a855f7", fg="white")
+            threading.Thread(target=_execute_autohunt, daemon=True).start()
+
+    _register_autohunt_run_hotkey()
+
+    def _build_autohunt_setup_ui():
+        """Constrói a UI de Setup AutoHunt dentro de autohunt_setup_frame (uma vez só)."""
+        if _autohunt_setup_built[0]:
+            return
+
+        _BG = "#121214"
+        _CARD = "#1a1a1e"
+        _BORDER = "#27272a"
+        _DIM = "#71717a"
+        _PURPLE = "#a855f7"
+        _GREEN = "#10b981"
+        _RED = "#ef4444"
+        _CYAN = "#22d3ee"
+        _YELLOW = "#eab308"
+
+        # ── HEADER ──
+        header = tk.Frame(autohunt_setup_frame, bg=_BG)
+        header.pack(fill="x", padx=16, pady=(14, 0))
+
+        btn_voltar = tk.Button(
+            header, text="❮  VOLTAR", font=("Consolas", 9, "bold"),
+            bg=_BG, fg=_DIM, bd=0, cursor="hand2",
+            activebackground=_BG, activeforeground="white",
+            command=_voltar_do_autohunt_setup
+        )
+        btn_voltar.pack(side="left")
+
+        title_frame = tk.Frame(header, bg=_BG)
+        title_frame.pack(side="right")
+        tk.Label(title_frame, text="🗺", font=("Segoe UI Emoji", 12),
+                 bg=_BG, fg=_PURPLE).pack(side="left", padx=(0, 4))
+        tk.Label(title_frame, text="AUTOHUNT", font=("Consolas", 13, "bold italic"),
+                 bg=_BG, fg=_PURPLE).pack(side="left")
+
+        tk.Frame(autohunt_setup_frame, bg=_BORDER, height=1).pack(fill="x", padx=16, pady=(10, 0))
+
+        # ── SCROLL AREA ──
+        scroll_outer = tk.Frame(autohunt_setup_frame, bg=_BG)
+        scroll_outer.pack(fill="both", expand=True, padx=0, pady=(0, 0))
+
+        main_canvas = tk.Canvas(scroll_outer, bg=_BG, highlightthickness=0)
+        main_scrollbar = tk.Scrollbar(scroll_outer, orient="vertical", command=main_canvas.yview)
+        scroll_content = tk.Frame(main_canvas, bg=_BG)
+
+        scroll_content.bind("<Configure>",
+                            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")))
+        main_canvas.create_window((0, 0), window=scroll_content, anchor="nw")
+        main_canvas.configure(yscrollcommand=main_scrollbar.set)
+
+        main_canvas.pack(side="left", fill="both", expand=True)
+        main_scrollbar.pack(side="right", fill="y")
+
+        def _resize_scroll(event):
+            main_canvas.itemconfig(main_canvas.find_all()[0], width=event.width)
+        main_canvas.bind("<Configure>", _resize_scroll)
+
+        def _on_mousewheel(event):
+            main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        # ════════════════════════════════════════
+        # SEÇÃO 1: HOTKEYS DE CONFIGURAÇÃO
+        # ════════════════════════════════════════
+        hotkey_card = tk.Frame(scroll_content, bg="#0d0d0f",
+                               highlightbackground=_BORDER, highlightthickness=1)
+        hotkey_card.pack(fill="x", padx=16, pady=(10, 0))
+
+        tk.Label(hotkey_card, text="⌨  HOTKEYS", font=("Consolas", 8, "bold"),
+                 bg="#0d0d0f", fg=_PURPLE).pack(anchor="w", padx=12, pady=(8, 4))
+
+        # Capture hotkey
+        hk_cap = tk.Frame(hotkey_card, bg="#0d0d0f")
+        hk_cap.pack(fill="x", padx=12, pady=(2, 8))
+        tk.Label(hk_cap, text="CAPTURAR:", font=("Consolas", 8, "bold"),
+                 bg="#0d0d0f", fg=_DIM).pack(side="left")
+        entry_capture_hk = tk.Entry(hk_cap, width=5, font=("Consolas", 10, "bold"),
+                                    bg="#18181b", fg=_CYAN, insertbackground=_CYAN,
+                                    bd=1, relief="solid", justify="center")
+        entry_capture_hk.insert(0, autohunt_capture_hotkey)
+        entry_capture_hk.pack(side="right", padx=4)
+        _autohunt_setup_widgets["entry_capture_hotkey"] = entry_capture_hk
+
+        # Run hotkey
+        hk_run = tk.Frame(hotkey_card, bg="#0d0d0f")
+        hk_run.pack(fill="x", padx=12, pady=(2, 8))
+        tk.Label(hk_run, text="EXECUTAR:", font=("Consolas", 8, "bold"),
+                 bg="#0d0d0f", fg=_DIM).pack(side="left")
+        entry_run_hk = tk.Entry(hk_run, width=5, font=("Consolas", 10, "bold"),
+                                bg="#18181b", fg=_CYAN, insertbackground=_CYAN,
+                                bd=1, relief="solid", justify="center")
+        entry_run_hk.insert(0, autohunt_run_hotkey)
+        entry_run_hk.pack(side="right", padx=4)
+        _autohunt_setup_widgets["entry_run_hotkey"] = entry_run_hk
+
+        # MovePoke hotkey
+        hk_movepoke = tk.Frame(hotkey_card, bg="#0d0d0f")
+        hk_movepoke.pack(fill="x", padx=12, pady=(2, 8))
+        tk.Label(hk_movepoke, text="MOVEPOKE:", font=("Consolas", 8, "bold"),
+                 bg="#0d0d0f", fg=_DIM).pack(side="left")
+        entry_movepoke_hk = tk.Entry(hk_movepoke, width=5, font=("Consolas", 10, "bold"),
+                                     bg="#18181b", fg=_CYAN, insertbackground=_CYAN,
+                                     bd=1, relief="solid", justify="center")
+        entry_movepoke_hk.insert(0, autohunt_movepoke_hotkey)
+        entry_movepoke_hk.pack(side="right", padx=4)
+        _autohunt_setup_widgets["entry_movepoke_hotkey"] = entry_movepoke_hk
+
+        # Loot hotkey
+        hk_loot = tk.Frame(hotkey_card, bg="#0d0d0f")
+        hk_loot.pack(fill="x", padx=12, pady=(2, 8))
+        tk.Label(hk_loot, text="LOOT:", font=("Consolas", 8, "bold"),
+                 bg="#0d0d0f", fg=_DIM).pack(side="left")
+        entry_loot_hk = tk.Entry(hk_loot, width=5, font=("Consolas", 10, "bold"),
+                                 bg="#18181b", fg=_CYAN, insertbackground=_CYAN,
+                                 bd=1, relief="solid", justify="center")
+        entry_loot_hk.insert(0, autohunt_loot_hotkey)
+        entry_loot_hk.pack(side="right", padx=4)
+        _autohunt_setup_widgets["entry_loot_hotkey"] = entry_loot_hk
+
+        # ════════════════════════════════════════
+        # SEÇÃO 2: PAINEL DE CONFIGURAÇÃO DE CAPTURA
+        # ════════════════════════════════════════
+        config_card = tk.Frame(scroll_content, bg=_CARD,
+                               highlightbackground=_BORDER, highlightthickness=1)
+        config_card.pack(fill="x", padx=16, pady=(8, 0))
+
+        tk.Label(config_card, text="📍  CAPTURA DE MOVIMENTO", font=("Consolas", 8, "bold"),
+                 bg=_CARD, fg=_PURPLE).pack(anchor="w", padx=12, pady=(8, 4))
+
+        # Linha: Combo toggle + Delay
+        cap_row = tk.Frame(config_card, bg=_CARD)
+        cap_row.pack(fill="x", padx=12, pady=(0, 4))
+
+        # Toggle combo para próxima coordenada
+        combo_var = tk.BooleanVar(value=False)
+        _autohunt_setup_widgets["combo_var"] = combo_var
+        combo_toggle_text = tk.StringVar(value="⚔ COMBO: NÃO")
+
+        def _toggle_combo_cap():
+            val = not combo_var.get()
+            combo_var.set(val)
+            combo_toggle_text.set("⚔ COMBO: SIM" if val else "⚔ COMBO: NÃO")
+            btn_combo_cap.config(bg="#16a34a" if val else "#27272a",
+                                 fg="white" if val else "#52525b")
+
+        btn_combo_cap = tk.Button(cap_row, textvariable=combo_toggle_text,
+                                  font=("Consolas", 8, "bold"),
+                                  bg="#27272a", fg="#52525b",
+                                  activebackground="#18181b", bd=0, padx=6, pady=4,
+                                  cursor="hand2", command=_toggle_combo_cap)
+        btn_combo_cap.pack(side="left", padx=(0, 8))
+
+        # Toggle loot para próxima coordenada
+        loot_var = tk.BooleanVar(value=False)
+        _autohunt_setup_widgets["loot_var"] = loot_var
+        loot_toggle_text = tk.StringVar(value="💰 LOOT: NÃO")
+
+        def _toggle_loot_cap():
+            val = not loot_var.get()
+            loot_var.set(val)
+            loot_toggle_text.set("💰 LOOT: SIM" if val else "💰 LOOT: NÃO")
+            btn_loot_cap.config(bg="#eab308" if val else "#27272a",
+                                fg="white" if val else "#52525b")
+
+        btn_loot_cap = tk.Button(cap_row, textvariable=loot_toggle_text,
+                                  font=("Consolas", 8, "bold"),
+                                  bg="#27272a", fg="#52525b",
+                                  activebackground="#18181b", bd=0, padx=6, pady=4,
+                                  cursor="hand2", command=_toggle_loot_cap)
+        btn_loot_cap.pack(side="left", padx=(0, 8))
+
+        # Delay input
+        tk.Label(cap_row, text="⏱ DELAY:", font=("Consolas", 8, "bold"),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=(0, 4))
+        entry_delay = tk.Entry(cap_row, width=5, font=("Consolas", 10, "bold"),
+                               bg="#18181b", fg=_CYAN, insertbackground=_CYAN,
+                               bd=1, relief="solid", justify="center")
+        entry_delay.insert(0, "0.5")
+        entry_delay.pack(side="left")
+        tk.Label(cap_row, text="s", font=("Consolas", 8),
+                 bg=_CARD, fg=_DIM).pack(side="left", padx=2)
+        _autohunt_setup_widgets["entry_delay"] = entry_delay
+
+        # Loop toggle
+        loop_row = tk.Frame(config_card, bg=_CARD)
+        loop_row.pack(fill="x", padx=12, pady=(0, 8))
+
+        loop_var = tk.BooleanVar(value=autohunt_loop)
+        _autohunt_setup_widgets["loop_var"] = loop_var
+        loop_text = tk.StringVar(value="🔁 LOOP: SIM" if autohunt_loop else "🔁 LOOP: NÃO")
+
+        def _toggle_loop():
+            val = not loop_var.get()
+            loop_var.set(val)
+            loop_text.set("🔁 LOOP: SIM" if val else "🔁 LOOP: NÃO")
+            btn_loop.config(bg="#a855f7" if val else "#27272a",
+                            fg="white" if val else "#52525b")
+
+        btn_loop = tk.Button(loop_row, textvariable=loop_text,
+                             font=("Consolas", 8, "bold"),
+                             bg="#a855f7" if autohunt_loop else "#27272a",
+                             fg="white" if autohunt_loop else "#52525b",
+                             activebackground="#18181b", bd=0, padx=6, pady=4,
+                             cursor="hand2", command=_toggle_loop)
+        btn_loop.pack(side="left")
+
+        # ════════════════════════════════════════
+        # SEÇÃO 3: BOTÕES DE GRAVAÇÃO
+        # ════════════════════════════════════════
+        record_frame = tk.Frame(scroll_content, bg=_BG)
+        record_frame.pack(fill="x", padx=16, pady=(8, 0))
+
+        record_status_var = tk.StringVar(value="PARADO")
+        _autohunt_setup_widgets["record_status_var"] = record_status_var
+
+        btn_record = tk.Button(record_frame, text="⏺  INICIAR GRAVAÇÃO",
+                               font=("Consolas", 9, "bold"),
+                               bg="#27272a", fg="white",
+                               activebackground="#ef4444", activeforeground="white",
+                               bd=0, pady=8, cursor="hand2",
+                               command=_start_autohunt_recording)
+        btn_record.pack(fill="x", pady=(0, 4))
+        _autohunt_setup_widgets["btn_record"] = btn_record
+
+        # Status da gravação
+        status_row = tk.Frame(record_frame, bg=_BG)
+        status_row.pack(fill="x")
+        tk.Label(status_row, text="STATUS:", font=("Consolas", 7, "bold"),
+                 bg=_BG, fg=_DIM).pack(side="left")
+        record_status_lbl = tk.Label(status_row, textvariable=record_status_var,
+                                     font=("Consolas", 8, "bold italic"),
+                                     bg=_BG, fg=_RED)
+        record_status_lbl.pack(side="left", padx=4)
+
+        def _update_record_status_color(*_):
+            val = record_status_var.get()
+            if "GRAVANDO" in val:
+                record_status_lbl.config(fg=_RED)
+            else:
+                record_status_lbl.config(fg=_DIM)
+        record_status_var.trace_add("write", _update_record_status_color)
+
+        # ════════════════════════════════════════
+        # SEÇÃO 4: LISTA DE ROTA
+        # ════════════════════════════════════════
+        route_section = tk.Frame(scroll_content, bg=_BG)
+        route_section.pack(fill="x", padx=16, pady=(8, 0))
+
+        # Header da lista
+        route_header = tk.Frame(route_section, bg=_BG)
+        route_header.pack(fill="x")
+        tk.Label(route_header, text="📋  ROTA", font=("Consolas", 9, "bold"),
+                 bg=_BG, fg=_PURPLE).pack(side="left")
+
+        # Tabela header
+        table_header = tk.Frame(route_section, bg="#0d0d0f",
+                                highlightbackground=_BORDER, highlightthickness=1)
+        table_header.pack(fill="x", pady=(4, 0))
+        th_inner = tk.Frame(table_header, bg="#0d0d0f")
+        th_inner.pack(fill="x", padx=8, pady=4)
+        th_inner.columnconfigure(1, weight=1)
+        tk.Label(th_inner, text="#", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg=_DIM, width=3, anchor="w").grid(row=0, column=0)
+        tk.Label(th_inner, text="COORDENADA", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg=_DIM, anchor="w").grid(row=0, column=1, sticky="w", padx=(4, 0))
+        tk.Label(th_inner, text="COMBO", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg=_DIM, width=6).grid(row=0, column=2, padx=(4, 2))
+        tk.Label(th_inner, text="LOOT", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg=_DIM, width=6).grid(row=0, column=3, padx=(2, 2))
+        tk.Label(th_inner, text="DELAY", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg=_DIM, width=4).grid(row=0, column=4, padx=(4, 0))
+
+        # Container scrollável para os itens da rota
+        route_list_outer = tk.Frame(route_section, bg=_BG)
+        route_list_outer.pack(fill="both", expand=True, pady=(2, 0))
+
+        route_list_frame = tk.Frame(route_list_outer, bg=_BG)
+        route_list_frame.pack(fill="x")
+        _autohunt_setup_widgets["route_list_frame"] = route_list_frame
+
+        # ════════════════════════════════════════
+        # SEÇÃO 5: BOTÕES DE AÇÃO
+        # ════════════════════════════════════════
+        action_frame = tk.Frame(scroll_content, bg=_BG)
+        action_frame.pack(fill="x", padx=16, pady=(8, 0))
+
+        action_grid = tk.Frame(action_frame, bg=_BG)
+        action_grid.pack(fill="x")
+        action_grid.columnconfigure(0, weight=1)
+        action_grid.columnconfigure(1, weight=1)
+
+        # Botão adicionar delay
+        btn_add_delay = tk.Button(action_grid, text="⏱  ADICIONAR DELAY",
+                                  font=("Consolas", 8, "bold"),
+                                  bg="#431407", fg=_YELLOW,
+                                  activebackground=_YELLOW, activeforeground="black",
+                                  bd=0, pady=8, cursor="hand2",
+                                  highlightbackground=_YELLOW, highlightthickness=1,
+                                  command=lambda: _add_delay_step())
+        btn_add_delay.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        # Botão limpar rota
+        btn_clear_route = tk.Button(action_grid, text="🗑  LIMPAR ROTA",
+                                    font=("Consolas", 8, "bold"),
+                                    bg="#450a0a", fg=_RED,
+                                    activebackground=_RED, activeforeground="white",
+                                    bd=0, pady=8, cursor="hand2",
+                                    highlightbackground=_RED, highlightthickness=1,
+                                    command=lambda: _clear_all_route())
+        btn_clear_route.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        def _add_delay_step():
+            """Adiciona um passo de delay puro na rota."""
+            delay_val = 1.0
+            try:
+                delay_val = float(entry_delay.get())
+            except ValueError:
+                delay_val = 1.0
+            step = {"x": 0, "y": 0, "combo": False, "delay": delay_val, "delay_only": True}
+            autohunt_route.append(step)
+            _add_route_row_ui(step)
+            _salvar_autohunt()
+            print(f"🗺 Delay de {delay_val}s adicionado à rota.")
+
+        def _clear_all_route():
+            """Limpa toda a rota."""
+            global autohunt_route
+            autohunt_route = []
+            _clear_route_ui()
+            _salvar_autohunt()
+            print("🗺 Rota limpa!")
+
+        # ════════════════════════════════════════
+        # SEÇÃO 6: SALVAR / CARREGAR HUNT
+        # ════════════════════════════════════════
+        hunt_card = tk.Frame(scroll_content, bg="#0d0d0f",
+                             highlightbackground=_PURPLE, highlightthickness=1)
+        hunt_card.pack(fill="x", padx=16, pady=(10, 0))
+
+        tk.Label(hunt_card, text="💾  GERENCIAR HUNT", font=("Consolas", 10, "bold"),
+                 bg="#0d0d0f", fg=_PURPLE).pack(anchor="w", padx=12, pady=(10, 2))
+
+        # ── Hunt ativa (destaque grande) ──
+        hunt_active_frame = tk.Frame(hunt_card, bg="#18181b",
+                                     highlightbackground="#27272a", highlightthickness=1)
+        hunt_active_frame.pack(fill="x", padx=12, pady=(4, 8))
+
+        hunt_active_inner = tk.Frame(hunt_active_frame, bg="#18181b")
+        hunt_active_inner.pack(fill="x", padx=10, pady=8)
+
+        tk.Label(hunt_active_inner, text="HUNT ATIVA:", font=("Consolas", 7, "bold"),
+                 bg="#18181b", fg="#52525b").pack(anchor="w")
+
+        hunt_loaded_label = tk.Label(hunt_active_inner,
+                                     text="📂 Nenhuma hunt carregada",
+                                     font=("Consolas", 11, "bold"),
+                                     bg="#18181b", fg="#52525b")
+        hunt_loaded_label.pack(anchor="w", pady=(2, 0))
+        _autohunt_setup_widgets["hunt_loaded_label"] = hunt_loaded_label
+
+        hunt_steps_label = tk.Label(hunt_active_inner, text="",
+                                    font=("Consolas", 8, "bold italic"),
+                                    bg="#18181b", fg="#3f3f46")
+        hunt_steps_label.pack(anchor="w")
+        _autohunt_setup_widgets["hunt_steps_label"] = hunt_steps_label
+
+        # Separador
+        tk.Frame(hunt_card, bg="#27272a", height=1).pack(fill="x", padx=12)
+
+        # ── Nome da hunt para salvar ──
+        tk.Label(hunt_card, text="NOME DA HUNT:", font=("Consolas", 7, "bold"),
+                 bg="#0d0d0f", fg="#52525b").pack(anchor="w", padx=12, pady=(8, 2))
+
+        entry_hunt_name = tk.Entry(hunt_card, font=("Consolas", 12, "bold"),
+                                   bg="#18181b", fg="#e2e8f0", insertbackground="#e2e8f0",
+                                   bd=1, relief="solid")
+        if autohunt_current_hunt:
+            entry_hunt_name.insert(0, autohunt_current_hunt)
+        entry_hunt_name.pack(fill="x", padx=12, pady=(0, 8))
+        _autohunt_setup_widgets["entry_hunt_name"] = entry_hunt_name
+
+        # ── Botões: GRAVAR / CARREGAR ──
+        hunt_btn_row = tk.Frame(hunt_card, bg="#0d0d0f")
+        hunt_btn_row.pack(fill="x", padx=12, pady=(0, 8))
+        hunt_btn_row.columnconfigure(0, weight=1)
+        hunt_btn_row.columnconfigure(1, weight=1)
+
+        btn_save_hunt = tk.Button(hunt_btn_row, text="💾  GRAVAR",
+                                  font=("Consolas", 10, "bold"),
+                                  bg="#14532d", fg=_GREEN,
+                                  activebackground=_GREEN, activeforeground="black",
+                                  bd=0, pady=10, cursor="hand2",
+                                  highlightbackground=_GREEN, highlightthickness=1,
+                                  command=lambda: _salvar_autohunt())
+        btn_save_hunt.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        btn_load_hunt = tk.Button(hunt_btn_row, text="📂  CARREGAR",
+                                  font=("Consolas", 10, "bold"),
+                                  bg="#1e1b4b", fg="#818cf8",
+                                  activebackground="#818cf8", activeforeground="black",
+                                  bd=0, pady=10, cursor="hand2",
+                                  highlightbackground="#818cf8", highlightthickness=1,
+                                  command=lambda: _abrir_lista_hunts())
+        btn_load_hunt.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        # Spacer extra
+        tk.Frame(hunt_card, bg="#0d0d0f", height=4).pack()
+
+        def _abrir_lista_hunts():
+            """Abre popup para selecionar ou deletar uma hunt salva."""
+            hunt_base = "hunt"
+            if not os.path.isdir(hunt_base):
+                print("⚠ Nenhuma hunt salva ainda! Pasta 'hunt/' não existe.")
+                return
+            hunts = [d for d in os.listdir(hunt_base)
+                     if os.path.isdir(os.path.join(hunt_base, d))
+                     and os.path.exists(os.path.join(hunt_base, d, "route.json"))]
+            if not hunts:
+                print("⚠ Nenhuma hunt salva encontrada!")
+                return
+
+            popup = tk.Toplevel(root)
+            popup.title("Hunts Salvas")
+            popup.configure(bg="#121214")
+            popup.geometry("360x450")
+            popup.resizable(False, True)
+            popup.transient(root)
+            popup.grab_set()
+
+            tk.Label(popup, text="📂 HUNTS SALVAS", font=("Consolas", 12, "bold"),
+                     bg="#121214", fg=_PURPLE).pack(pady=(14, 4))
+            tk.Label(popup, text="Clique para carregar, 🗑 para deletar",
+                     font=("Consolas", 7), bg="#121214", fg="#52525b").pack(pady=(0, 10))
+
+            list_frame = tk.Frame(popup, bg="#121214")
+            list_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+            def _rebuild_list():
+                for child in list_frame.winfo_children():
+                    child.destroy()
+                current_hunts = [d for d in os.listdir(hunt_base)
+                                 if os.path.isdir(os.path.join(hunt_base, d))
+                                 and os.path.exists(os.path.join(hunt_base, d, "route.json"))]
+                if not current_hunts:
+                    tk.Label(list_frame, text="Nenhuma hunt salva.",
+                             font=("Consolas", 9, "italic"),
+                             bg="#121214", fg="#52525b").pack(pady=20)
+                    return
+                for h_name in sorted(current_hunts):
+                    hunt_file = os.path.join(hunt_base, h_name, "route.json")
+                    try:
+                        with open(hunt_file, "r", encoding="utf-8") as f:
+                            hdata = json.load(f)
+                        n_steps = len(hdata.get("route", []))
+                    except Exception:
+                        n_steps = "?"
+
+                    row = tk.Frame(list_frame, bg="#1a1a1e",
+                                   highlightbackground="#27272a", highlightthickness=1)
+                    row.pack(fill="x", pady=2)
+
+                    is_active = (h_name == autohunt_current_hunt)
+                    accent_color = _GREEN if is_active else "#27272a"
+                    bar = tk.Frame(row, bg=accent_color, width=3)
+                    bar.pack(side="left", fill="y")
+
+                    def _load_this(name=h_name):
+                        _carregar_hunt(name)
+                        popup.destroy()
+
+                    btn_h = tk.Button(row, text=f"🗺 {h_name}  ({n_steps} passos)",
+                                      font=("Consolas", 9, "bold"),
+                                      bg="#1a1a1e", fg="white" if is_active else "#d4d4d8",
+                                      activebackground=_PURPLE, activeforeground="white",
+                                      bd=0, pady=8, cursor="hand2",
+                                      anchor="w", padx=8,
+                                      command=_load_this)
+                    btn_h.pack(side="left", fill="x", expand=True)
+
+                    def _delete_this(name=h_name):
+                        _deletar_hunt(name)
+                        _rebuild_list()
+
+                    btn_del = tk.Button(row, text="🗑", font=("Segoe UI Emoji", 11),
+                                        bg="#1a1a1e", fg="#52525b",
+                                        activebackground="#ef4444", activeforeground="white",
+                                        bd=0, padx=8, cursor="hand2",
+                                        command=_delete_this)
+                    btn_del.pack(side="right", fill="y")
+
+            _rebuild_list()
+
+            btn_close = tk.Button(popup, text="FECHAR", font=("Consolas", 10, "bold"),
+                                  bg="#27272a", fg="#71717a",
+                                  activebackground="#3f3f46", activeforeground="white",
+                                  bd=0, pady=8, cursor="hand2",
+                                  command=popup.destroy)
+            btn_close.pack(fill="x", padx=12, pady=(0, 12))
+
+        def _deletar_hunt(nome):
+            """Deleta uma hunt salva."""
+            global autohunt_route, autohunt_current_hunt
+            import shutil
+            hunt_dir = os.path.join("hunt", nome)
+            if os.path.isdir(hunt_dir):
+                shutil.rmtree(hunt_dir)
+                print(f"🗑 Hunt '{nome}' deletada!")
+                # Se era a hunt ativa, limpa
+                if autohunt_current_hunt == nome:
+                    autohunt_route = []
+                    autohunt_current_hunt = ""
+                    _refresh_autohunt_setup()
+                    salvar_perfil_atual(perfil_ativo)
+
+        def _carregar_hunt(nome):
+            """Carrega uma hunt salva do arquivo."""
+            global autohunt_route, autohunt_loop, autohunt_current_hunt, autohunt_capture_hotkey, autohunt_run_hotkey, autohunt_movepoke_hotkey, autohunt_loot_hotkey
+            hunt_file = os.path.join("hunt", nome, "route.json")
+            if not os.path.exists(hunt_file):
+                print(f"⚠ Arquivo não encontrado: {hunt_file}")
+                return
+            try:
+                with open(hunt_file, "r", encoding="utf-8") as f:
+                    hunt_data = json.load(f)
+                autohunt_route = hunt_data.get("route", [])
+                autohunt_loop = hunt_data.get("loop", True)
+                autohunt_capture_hotkey = hunt_data.get("capture_hotkey", autohunt_capture_hotkey)
+                autohunt_run_hotkey = hunt_data.get("run_hotkey", autohunt_run_hotkey)
+                autohunt_movepoke_hotkey = hunt_data.get("movepoke_hotkey", autohunt_movepoke_hotkey)
+                autohunt_loot_hotkey = hunt_data.get("loot_hotkey", autohunt_loot_hotkey)
+                autohunt_current_hunt = nome
+                _refresh_autohunt_setup()
+                _register_autohunt_run_hotkey()
+                salvar_perfil_atual(perfil_ativo)
+                print(f"✅ Hunt '{nome}' carregada! {len(autohunt_route)} passos.")
+            except Exception as e:
+                print(f"⚠ Erro ao carregar hunt '{nome}': {e}")
+
+        # Spacer no final
+        tk.Frame(scroll_content, bg=_BG, height=10).pack()
+
+        _autohunt_setup_built[0] = True
+
+    def _refresh_autohunt_setup():
+        """Preenche/recarrega os campos com os valores globais atuais."""
+        w = _autohunt_setup_widgets
+        # Atualiza hotkeys
+        for name, val in [
+            ("entry_capture_hotkey", autohunt_capture_hotkey),
+            ("entry_run_hotkey", autohunt_run_hotkey),
+            ("entry_movepoke_hotkey", autohunt_movepoke_hotkey),
+            ("entry_loot_hotkey", autohunt_loot_hotkey),
+        ]:
+            entry = w.get(name)
+            if entry:
+                entry.delete(0, "end")
+                entry.insert(0, val)
+        # Atualiza loop
+        loop_v = w.get("loop_var")
+        if loop_v:
+            loop_v.set(autohunt_loop)
+        # Atualiza nome da hunt
+        hunt_entry = w.get("entry_hunt_name")
+        if hunt_entry:
+            hunt_entry.delete(0, "end")
+            if autohunt_current_hunt:
+                hunt_entry.insert(0, autohunt_current_hunt)
+        hunt_lbl = w.get("hunt_loaded_label")
+        if hunt_lbl:
+            if autohunt_current_hunt:
+                hunt_lbl.config(text=f"� {autohunt_current_hunt}", fg="#10b981")
+            else:
+                hunt_lbl.config(text="📂 Nenhuma hunt carregada", fg="#52525b")
+        hunt_steps_lbl = w.get("hunt_steps_label")
+        if hunt_steps_lbl:
+            if autohunt_current_hunt and autohunt_route:
+                hunt_steps_lbl.config(text=f"{len(autohunt_route)} passos na rota", fg="#52525b")
+            else:
+                hunt_steps_lbl.config(text="")
+        # Reconstrói lista de rota
+        _clear_route_ui()
+        for step in autohunt_route:
+            _add_route_row_ui(step)
+
+    def open_autohunt_setup():
+        """Mostra a tela de Setup AutoHunt dentro da mesma janela."""
+        _build_autohunt_setup_ui()
+        _refresh_autohunt_setup()
+        main_content_frame.pack_forget()
+        autohunt_setup_frame.pack(fill="both", expand=True)
+
     # Combo toggle visual update
     _orig_toggle = toggle_activation
     def _enhanced_toggle():
@@ -4212,8 +5774,10 @@ def main():
             # Restaura cores dos cards
             combo_card.config(highlightbackground="#eab308")
             captura_card.config(highlightbackground="#22d3ee")
+            autohunt_card.config(highlightbackground="#a855f7")
             combo_title_lbl.config(fg="#eab308")
             captura_title_lbl.config(fg="#22d3ee")
+            autohunt_title_lbl.config(fg="#a855f7")
         else:
             scan_status_lbl.config(text="BOT OFF", fg="#f87171")
             # LED grande fica vermelho quando OFF
@@ -4226,11 +5790,17 @@ def main():
             if not bot_active:
                 button_activation.config(text="●  DESLIGADO", bg="#27272a", fg="#52525b")
                 btn_captura_main_toggle.config(text="●  DESLIGADO", bg="#27272a", fg="#52525b")
+                btn_autohunt_main_toggle.config(text="●  DESLIGADO", bg="#27272a", fg="#52525b")
                 # Dim card borders
                 combo_card.config(highlightbackground="#3f3f46")
                 captura_card.config(highlightbackground="#3f3f46")
+                autohunt_card.config(highlightbackground="#3f3f46")
                 combo_title_lbl.config(fg="#52525b")
                 captura_title_lbl.config(fg="#52525b")
+                autohunt_title_lbl.config(fg="#52525b")
+                # Stop autohunt if running
+                if autohunt_running:
+                    autohunt_stop_event.set()
         except Exception:
             pass
 

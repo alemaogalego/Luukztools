@@ -114,7 +114,31 @@ def revive(revive_key):
     return True
 
 
-def combo_hunt_dynamic(attacks, should_continue=None, interrupt_event=None):
+def revive_sempoke(revive_key):
+    """Revive quando NÃO tem pokébola (pokémon fora da pokeball)."""
+    if revive_key:
+        py.moveTo(pos_poke)
+        time.sleep(0.5)
+        keyboard.press_and_release(revive_key)
+        py.moveTo(pos_poke)
+        keyboard.press_and_release('ctrl+f1')
+        time.sleep(0.8)
+        keyboard.press_and_release("e")
+        py.moveTo(pos_center)
+    return True
+
+
+def smart_revive(revive_key, has_pokeball_fn=None):
+    """Escolhe revive normal ou sem pokéball baseado na detecção."""
+    if has_pokeball_fn is not None and not has_pokeball_fn():
+        print("🔴 Pokéball AUSENTE → revive_sempoke")
+        return revive_sempoke(revive_key)
+    else:
+        print("🔴 Pokéball PRESENTE → revive normal")
+        return revive(revive_key)
+
+
+def combo_hunt_dynamic(attacks, should_continue=None, interrupt_event=None, has_pokeball_fn=None):
     """
     Executa combo Hunt Normal com lista dinâmica de ações.
     attacks: lista de dicts [{"key": "q", "delay": 0.5, "type": "atk"}, ...]
@@ -147,7 +171,7 @@ def combo_hunt_dynamic(attacks, should_continue=None, interrupt_event=None):
             continue
 
         if tipo == "revive":
-            revive(key)
+            smart_revive(key, has_pokeball_fn)
         else:
             keyboard.press_and_release(key)
             if not _sleep(delay):
@@ -158,7 +182,7 @@ def combo_hunt_dynamic(attacks, should_continue=None, interrupt_event=None):
     return True
 
 
-def combo_nightmare(nightmare_attacks, should_continue=None, interrupt_event=None):
+def combo_nightmare(nightmare_attacks, should_continue=None, interrupt_event=None, has_pokeball_fn=None):
     """
     Executa combo no modo Nightmare.
     nightmare_attacks: lista de dicts [{"key1": "alt", "key2": "1", "delay": 0.5, "type": "pokeball"}, ...]
@@ -193,7 +217,7 @@ def combo_nightmare(nightmare_attacks, should_continue=None, interrupt_event=Non
             continue
 
         if tipo == "revive":
-            revive(key1)
+            smart_revive(key1, has_pokeball_fn)
         elif tipo == "pokeball" and key2:
             # Troca de pokémon: combo key (ex: alt+1)
             keyboard.press_and_release(f"{key1}+{key2}")

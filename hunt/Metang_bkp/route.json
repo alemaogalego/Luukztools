@@ -1,0 +1,415 @@
+{
+  "route": [
+    {
+      "x": 956,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 956,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 956,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 956,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 884,
+      "y": 560,
+      "combo": true,
+      "loot": false,
+      "delay": 4.5
+    },
+    {
+      "x": 884,
+      "y": 560,
+      "combo": false,
+      "loot": true,
+      "delay": 2.0
+    },
+    {
+      "x": 958,
+      "y": 61,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1313,
+      "y": 344,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1315,
+      "y": 416,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 958,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1239,
+      "y": 347,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1242,
+      "y": 411,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 959,
+      "y": 210,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1175,
+      "y": 265,
+      "combo": true,
+      "loot": false,
+      "delay": 5.8
+    },
+    {
+      "x": 1175,
+      "y": 265,
+      "combo": false,
+      "loot": true,
+      "delay": 2.5
+    },
+    {
+      "x": 1032,
+      "y": 54,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 964,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 964,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 964,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 964,
+      "y": 58,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 1028,
+      "y": 270,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1454,
+      "y": 411,
+      "combo": true,
+      "loot": false,
+      "delay": 5.7
+    },
+    {
+      "x": 1454,
+      "y": 411,
+      "combo": false,
+      "loot": true,
+      "delay": 2.8
+    },
+    {
+      "x": 1240,
+      "y": 407,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1383,
+      "y": 409,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 1306,
+      "y": 482,
+      "combo": false,
+      "loot": false,
+      "delay": 2.8
+    },
+    {
+      "x": 956,
+      "y": 690,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 966,
+      "y": 685,
+      "combo": false,
+      "loot": false,
+      "delay": 1.8
+    },
+    {
+      "x": 1032,
+      "y": 554,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1587,
+      "y": 547,
+      "combo": true,
+      "loot": false,
+      "delay": 6.5
+    },
+    {
+      "x": 1592,
+      "y": 547,
+      "combo": false,
+      "loot": true,
+      "delay": 3.4
+    },
+    {
+      "x": 538,
+      "y": 406,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 676,
+      "y": 621,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 960,
+      "y": 696,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 958,
+      "y": 687,
+      "combo": false,
+      "loot": false,
+      "delay": 2.2
+    },
+    {
+      "x": 1027,
+      "y": 687,
+      "combo": false,
+      "loot": false,
+      "delay": 2.2
+    },
+    {
+      "x": 957,
+      "y": 698,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 897,
+      "y": 486,
+      "combo": false,
+      "loot": false,
+      "delay": 2.2
+    },
+    {
+      "x": 1033,
+      "y": 267,
+      "combo": true,
+      "loot": false,
+      "delay": 4.0
+    },
+    {
+      "x": 1032,
+      "y": 266,
+      "combo": false,
+      "loot": true,
+      "delay": 2.0
+    },
+    {
+      "x": 537,
+      "y": 549,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 959,
+      "y": 691,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 962,
+      "y": 690,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1171,
+      "y": 693,
+      "combo": false,
+      "loot": false,
+      "delay": 2.3
+    },
+    {
+      "x": 955,
+      "y": 695,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 959,
+      "y": 684,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 746,
+      "y": 622,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 956,
+      "y": 687,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 473,
+      "y": 415,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 957,
+      "y": 481,
+      "combo": false,
+      "loot": false,
+      "delay": 2.0
+    },
+    {
+      "x": 1173,
+      "y": 481,
+      "combo": true,
+      "loot": false,
+      "delay": 5.5
+    },
+    {
+      "x": 1173,
+      "y": 481,
+      "combo": false,
+      "loot": true,
+      "delay": 2.0
+    },
+    {
+      "x": 539,
+      "y": 406,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 543,
+      "y": 409,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 539,
+      "y": 409,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 539,
+      "y": 409,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 539,
+      "y": 409,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    },
+    {
+      "x": 602,
+      "y": 408,
+      "combo": false,
+      "loot": false,
+      "delay": 2.5
+    }
+  ],
+  "loop": true,
+  "capture_hotkey": "capslock",
+  "run_hotkey": "x",
+  "movepoke_hotkey": "backspace",
+  "loot_hotkey": "space"
+}
